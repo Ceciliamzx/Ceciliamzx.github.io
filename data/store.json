@@ -1,0 +1,18 @@
+{
+  "analytics": {
+    "visits": 0,
+    "questions": 0,
+    "buttonClicks": 0
+  },
+  "faqs": [
+    {
+      "id": 1,
+      "question_zh": "为什么英国有下午茶文化？",
+      "question_en": "Why does afternoon tea culture exist in the UK?",
+      "answer_zh": "【历史背景】\n下午茶在19世纪逐步稳定为固定社交时段。\n\n【社会语境】\n它兼具礼仪实践与关系维护功能。\n\n【当代变化】\n如今已从精英礼仪扩展为大众文化体验。\n\n【具体案例】\n伦敦传统酒店与社区茶室并行，形成多层次选择。",
+      "answer_en": "[Historical Background]\nAfternoon tea became a stable social practice during the 19th century.\n\n[Social Context]\nIt combines etiquette with relationship maintenance.\n\n[Contemporary Change]\nToday it has expanded from elite ritual to broad cultural experience.\n\n[Concrete Example]\nLondon offers both classic hotel tea and community-oriented tea spaces."
+    }
+  ],
+  "feedback": [],
+  "users": []
+}
