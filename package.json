@@ -1,0 +1,17 @@
+{
+  "name": "london-uncovered",
+  "version": "1.0.0",
+  "main": "api/index.js",
+  "scripts": {
+    "build": "echo 'Build completed successfully'",
+    "start": "node api/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "@vercel/kv": "^1.0.0"
+  },
+  "engines": {
+    "node": "20.x"
+  }
+}
