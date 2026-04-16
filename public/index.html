@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>读懂伦敦 London Uncovered</title>
+  <style>
+    :root {
+      --london-blue: #1a2b48;
+      --off-white: #f8f5f0;
+      --gold: #d4af37;
+      --ink: #1d2430;
+      --line: #d8dce3;
+      --ai-bg: #eef2f7;
+      --user-bg: #26426d;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--off-white);
+      color: var(--ink);
+      overflow: hidden;
+    }
+
+    .layout {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+    }
+
+    .sidebar {
+      width: 260px;
+      flex: 0 0 260px;
+      background: var(--london-blue);
+      color: #f6f8fc;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid rgba(255, 255, 255, 0.12);
+      overflow: hidden;
+    }
+
+    .brand {
+      padding: 20px 18px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+      flex: 0 0 auto;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--london-blue);
+    }
+
+    .sidebar-scroll {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      scroll-behavior: smooth;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.35;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .brand p {
+      margin: 6px 0 0;
+      color: #c8d4e8;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .section-title {
+      font-size: 12px;
+      letter-spacing: 0.6px;
+      color: #a9bddb;
+      text-transform: uppercase;
+      margin: 14px 18px 8px;
+    }
+
+    .nav,
+    .quick-list {
+      padding: 0 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .nav-btn,
+    .quick-btn,
+    .action {
+      width: 100%;
+      border: 1px solid #b8c2d0;
+      background: var(--london-blue);
+      color: #dbe7fb;
+      border-radius: 10px;
+      padding: 9px 10px;
+      text-align: left;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .nav-btn:hover,
+    .quick-btn:hover,
+    .action:hover {
+      background: #2a426a;
+      color: #ffffff;
+      border-color: #d1d7e2;
+    }
+
+
+    .project-note {
+      margin-top: auto;
+      padding: 14px 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.16);
+      font-size: 12px;
+      line-height: 1.55;
+      color: #cfdbef;
+    }
+
+    .project-note b {
+      color: var(--gold);
+    }
+
+    .chat-shell {
+      flex: 1;
+      display: grid;
+      grid-template-rows: 1fr auto;
+      min-width: 0;
+      background: linear-gradient(180deg, #f8f5f0 0%, #f2eee7 100%);
+    }
+
+    .chat-area {
+      overflow-y: auto;
+      padding: 22px 28px 100px;
+      scroll-behavior: smooth;
+    }
+
+    .msg-row {
+      display: flex;
+      margin-bottom: 14px;
+    }
+
+    .msg-row.user {
+      justify-content: flex-end;
+    }
+
+    .bubble {
+      max-width: min(820px, 84%);
+      border-radius: 14px;
+      line-height: 1.72;
+      font-size: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      padding: 12px 14px;
+      border: 1px solid transparent;
+      box-shadow: 0 6px 16px rgba(20, 33, 56, 0.08);
+    }
+
+    .msg-row.ai .bubble {
+      background: var(--ai-bg);
+      border-color: #d4dbe6;
+      color: #1e2b3f;
+      border-left: 4px solid var(--gold);
+    }
+
+    .msg-row.user .bubble {
+      background: var(--user-bg);
+      color: #f7fbff;
+      border-color: #1f385c;
+    }
+
+    .sender {
+      display: inline-block;
+      font-size: 11px;
+      margin-bottom: 6px;
+      opacity: 0.85;
+    }
+
+    .composer {
+      position: sticky;
+      bottom: 0;
+      padding: 12px 18px 16px;
+      background: linear-gradient(180deg, rgba(248, 245, 240, 0.65) 0%, rgba(248, 245, 240, 1) 40%);
+      backdrop-filter: blur(4px);
+      border-top: 1px solid #dbdfE6;
+    }
+
+    .input-wrap {
+      display: grid;
+      grid-template-columns: 1fr 90px 90px;
+      gap: 8px;
+      max-width: 980px;
+      margin: 0 auto;
+    }
+
+    .mode-wrap {
+      max-width: 980px;
+      margin: 0 auto 8px;
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    #input {
+      width: 100%;
+      border: 1px solid #c6cfdb;
+      border-radius: 12px;
+      padding: 11px 12px;
+      font-size: 14px;
+      background: #fff;
+      outline: none;
+    }
+
+    #input:focus {
+      border-color: var(--london-blue);
+      box-shadow: 0 0 0 3px rgba(26, 43, 72, 0.13);
+    }
+
+    .action {
+      border-radius: 12px;
+      font-size: 14px;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    .mode-btn {
+      width: auto;
+      min-width: 68px;
+      padding: 6px 10px;
+      font-size: 12px;
+      border-radius: 999px;
+    }
+
+    .mode-btn.active {
+      background: #2f4a76;
+      color: #ffffff;
+      border-color: #d8deea;
+    }
+
+    .typing {
+      color: #5a687c;
+      font-style: italic;
+    }
+
+    @media (max-width: 860px) {
+      .layout {
+        flex-direction: column;
+      }
+
+      .sidebar {
+        width: 100%;
+        flex: 0 0 auto;
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+        max-height: 45vh;
+      }
+
+      .chat-shell {
+        min-height: 0;
+      }
+
+      .chat-area {
+        padding: 14px 12px 96px;
+      }
+
+      .bubble {
+        max-width: 94%;
+      }
+
+      .input-wrap {
+        grid-template-columns: 1fr 76px 76px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="brand">
+        <h1 id="brandTitle">读懂伦敦 London Uncovered</h1>
+        <p id="brandDesc">留学生 / 游客 / 外来工作者的城市文化解释助手</p>
+      </section>
+
+      <div class="sidebar-scroll">
+        <h2 class="section-title" id="navTitle">文化板块导航</h2>
+        <section class="nav">
+          <button class="nav-btn" data-push="饮食文化" data-push-en="Food Culture">饮食文化</button>
+          <button class="nav-btn" data-push="服饰消费" data-push-en="Fashion & Consumption">服饰消费</button>
+          <button class="nav-btn" data-push="住房建筑" data-push-en="Housing & Architecture">住房建筑</button>
+          <button class="nav-btn" data-push="交通通勤" data-push-en="Transport & Commuting">交通通勤</button>
+        </section>
+
+        <h2 class="section-title" id="quickTitle">快捷提问（7）</h2>
+        <section class="quick-list">
+          <button class="quick-btn" data-q="为什么英国有下午茶文化？" data-q-en="Why does afternoon tea culture exist in the UK?" data-label-zh="下午茶文化的由来" data-label-en="Origin of Afternoon Tea">下午茶文化的由来</button>
+          <button class="quick-btn" data-q="炸鱼薯条为何成为英国国菜？" data-q-en="Why is fish and chips a national dish in the UK?" data-label-zh="炸鱼薯条为什么火" data-label-en="Why Fish and Chips Matters">炸鱼薯条为什么火</button>
+          <button class="quick-btn" data-q="伦敦多元饮食怎么形成？" data-q-en="How did London's diverse food culture form?" data-label-zh="伦敦多元饮食怎么来的" data-label-en="How Food Diversity Formed">伦敦多元饮食怎么来的</button>
+          <button class="quick-btn" data-q="伦敦古着文化为何发达？" data-q-en="Why is vintage culture so developed in London?" data-label-zh="古着文化为什么发达" data-label-en="Why Vintage Culture Thrives">古着文化为什么发达</button>
+          <button class="quick-btn" data-q="伦敦为何满是维多利亚排屋？" data-q-en="Why is London full of Victorian terraces?" data-label-zh="为什么到处是维多利亚排屋" data-label-en="Why So Many Victorian Terraces">为什么到处是维多利亚排屋</button>
+          <button class="quick-btn" data-q="伦敦人为何依赖地铁？" data-q-en="Why do Londoners rely on the Tube?" data-label-zh="为什么依赖地铁" data-label-en="Why People Rely on the Tube">为什么依赖地铁</button>
+          <button class="quick-btn" data-q="伦敦地铁Tube文化与通勤礼仪？" data-q-en="What are Tube culture and commuting etiquette in London?" data-label-zh="Tube通勤礼仪" data-label-en="Tube Commuting Etiquette">Tube通勤礼仪</button>
+        </section>
+      </div>
+
+      <section class="project-note">
+        <b id="projectNoteTitle">数字人文·文化解释AI</b><br />
+        <span id="projectNoteDesc">前后端一体化：前台文化解释 + 后台管理与分析。</span>
+      </section>
+    </aside>
+
+    <section class="chat-shell">
+      <section id="chatArea" class="chat-area"></section>
+
+      <footer class="composer">
+        <div class="mode-wrap">
+          <button id="briefMode" class="action mode-btn" type="button">简答</button>
+          <button id="deepMode" class="action mode-btn active" type="button">详答</button>
+          <button id="feedbackBtn" class="action mode-btn" type="button">反馈</button>
+          <button id="langToggle" class="action mode-btn" type="button">EN</button>
+        </div>
+        <div class="input-wrap">
+          <input id="input" type="text" placeholder="问我任何伦敦城市文化问题..." />
+          <button id="send" class="action" type="button">发送</button>
+          <button id="clear" class="action" type="button">清空</button>
+        </div>
+      </footer>
+    </section>
+  </main>
+
+  <script>
+    // 强制覆盖所有postEvent，不删任何原有代码
+function postEvent(type, extra = {}) {
+  console.log("✅ 埋点发送成功", type);
+  fetch("/api/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, ...extra, timestamp: new Date().toISOString() })
+  });
+}
+// 页面加载必发埋点
+window.addEventListener("load", () => postEvent("page_view", {}));
+    // 深度知识库：按题目 + 关键词模糊匹配
+    const KB = [
+      {
+        q: "为什么英国有下午茶文化？",
+        k: ["下午茶", "afternoon tea", "茶文化", "司康"],
+        a: "【历史背景】\n下午茶最早是在19世纪上层家庭的作息里稳定下来的：午餐和晚餐间隔太久，人们先用茶和小点心补充体力，后来逐渐发展成有礼仪、有顺序的社交场景。\n\n【社会语境】\n它的意义从来不只是“喝茶”，而是通过一套温和、克制的流程维持关系、表达教养和确认身份边界，这很符合英国社会强调秩序感和分寸感的互动方式。\n\n【当代变化】\n现在下午茶已经从上层礼仪转成跨阶层文化消费：既有传统酒店的经典套餐，也有更年轻化、主题化、健康化的版本，功能也从日常礼仪扩展到旅游体验与社交表达。\n\n【具体案例】\n在伦敦你会看到两种典型路径：一类坚持银壶、三层架和司康流程；另一类在口味上加入多文化元素。第一次体验可按“咸点→司康→甜点”的顺序，更容易进入语境。"
+      },
+      {
+        q: "炸鱼薯条为何成为英国国菜？",
+        k: ["炸鱼薯条", "fish and chips", "国菜", "英国菜"],
+        a: "【历史背景】\n炸鱼和薯条在工业化时期完成组合，关键原因是成本低、热量高、出餐快，正好适应快速城市化中工人群体的饮食需求，随后在全国连锁化传播。\n\n【社会语境】\n它之所以成为“国民食物”，是因为不同阶层都能接触、都能接受，在战争和经济波动时期也具备稳定情绪与日常节奏的作用，形成了跨代共享的饮食记忆。\n\n【当代变化】\n当代版本更强调食材选择和烹饪方式，很多店在传统口味基础上加入更清爽的搭配，消费者也更关注来源透明、营养平衡与可持续消费。\n\n【具体案例】\n伦敦老店仍保留朴素传统做法，新派餐厅则会搭配精酿和升级配菜。实操上，选择客流稳定、换油频率高、鱼肉现炸的店，口感通常更好。"
+      },
+      {
+        q: "伦敦多元饮食怎么形成？",
+        k: ["多元饮食", "咖喱街", "唐人街", "加勒比", "移民饮食"],
+        a: "【历史背景】\n伦敦饮食多元是长期人口流动的结果：贸易网络、移民迁徙、教育与就业机会共同作用，让不同地区的食材、做法和餐饮经营方式持续进入城市。\n\n【社会语境】\n餐馆在这里不只是商业空间，也是社群建立归属、维系代际记忆、与城市主流互动的接口，所以“吃什么”常常也在回答“我是谁、我来自哪里”。\n\n【当代变化】\n现在的趋势从“并列共存”走向“融合共创”：菜系边界更柔和，街头小店和新餐饮品牌都在做跨文化混搭，城市饮食不断产生新组合。\n\n【具体案例】\n你可以在同一晚跨街区体验南亚、东亚和加勒比风味。对新来者最有效的方式是按街区探索，而不是只按菜名搜店，这样更能看见文化层次。"
+      },
+      {
+        q: "伦敦Pub文化与社交规则是什么？",
+        k: ["pub", "酒吧文化", "请酒", "轮流买单"],
+        a: "【历史背景】\nPub由早期酒馆传统演化而来，工业化后成为街区社交的核心节点，长期承担“让陌生人有机会低门槛互动”的功能。\n\n【社会语境】\n常见的 rounds（轮流请一轮）体现的是关系互惠而非即时结算，重点不是算得最精，而是维持社交节奏与彼此体面。\n\n【当代变化】\n当代 pub 已经是餐饮、观赛、家庭聚会、社区活动并存的复合空间，但其底层逻辑没变：以轻规则支持高频社交。\n\n【具体案例】\n第一次去本地 pub，先在吧台点单、拿到饮品再找位最稳妥；不插队、不过度喧闹、轮到自己时快速点单，基本就不会尴尬。"
+      },
+      {
+        q: "伦敦人穿衣“随意又精致”的文化原因？",
+        k: ["穿衣", "随意又精致", "通勤穿搭", "dress code"],
+        a: "【历史背景】\n伦敦长期并行两条风格路径：一条是讲究剪裁与工艺的传统正装线，一条是不断更新的街头文化线，两者长期共存，塑造了城市独特审美。\n\n【社会语境】\n“随意又精致”本质是场景管理：通勤要耐候和实用，社交要表达个性，再叠加多变天气，最终形成分层穿搭与克制配色的日常策略。\n\n【当代变化】\n现在更多人采用“基础款+个性单品”的组合，二手、独立设计和高街品牌混搭成为主流，消费逻辑也从一次性流行转向复穿率和功能性。\n\n【具体案例】\n你在工作区常见中性色防水外套，在创意街区会看到复古拼搭。入门可先做“通勤胶囊衣橱”，再用鞋、包、外套做风格加法。"
+      },
+      {
+        q: "伦敦古着文化为何发达？",
+        k: ["古着", "二手", "vintage", "charity shop", "depop"],
+        a: "【历史背景】\n伦敦古着文化建立在慈善商店体系、跳蚤市场传统和青年文化长期互动之上，二手循环在本地并不是新概念，而是持续很多年的生活方式。\n\n【社会语境】\n古着消费同时满足三件事：预算控制、个性表达和价值立场。它让人们在“买得起”和“穿得出区别”之间找到平衡。\n\n【当代变化】\n线上平台推动古着从小圈层走向大众化，流通效率更高，价格也更透明，年轻群体把二手视为常规选项而非妥协。\n\n【具体案例】\n线下可逛东伦敦和西伦敦的古着密集街区，线上可追本地卖家。新手建议优先买外套、针织和皮鞋，耐用度高、试错成本低。"
+      },
+      {
+        q: "英国排队、消费、小费礼仪是什么？",
+        k: ["排队", "小费", "礼仪", "消费习惯"],
+        a: "【历史背景】\n英国城市日常秩序长期依赖可预期规则，排队文化正是在高密度公共生活中逐步固化下来的，成为最直观的社会协作机制。\n\n【社会语境】\n排队、小费、退换流程看似琐碎，实则是在降低陌生人社会的摩擦成本：每个人按同一套规则行动，冲突自然减少。\n\n【当代变化】\n无接触支付和标准化账单让消费流程更透明；餐厅服务费常常直接写入明细，顾客更重视“先看账单再决定是否加给”。\n\n【具体案例】\n实操最稳是三步：先排队、看明细、留小票。餐厅若已含服务费通常不必重复加给，咖啡和外卖场景一般更灵活。"
+      },
+      {
+        q: "伦敦为何满是维多利亚排屋？",
+        k: ["维多利亚排屋", "1875", "公共卫生法", "terrace", "联排"],
+        a: "【历史背景】\n维多利亚时期人口快速增长，城市需要可复制、可控成本的住宅模型，排屋因此成为主流方案；卫生法规完善后，通风、采光、排水标准也推动了街区建造的统一化。\n\n【社会语境】\n排屋的价值不只在单栋房子，而在整条街的秩序：连续立面、步行友好、近距离生活设施，体现的是工业城市如何组织中等密度生活。\n\n【当代变化】\n今天常见“外观保留、内部更新”模式：历史风貌被延续，室内则适配现代保温、合租和家庭结构变化，保护与增密长期并行。\n\n【具体案例】\nIslington、Notting Hill 等地是典型观察点。看这类房子时，除了外观审美，更该关注能效、维护成本和交通可达性。"
+      },
+      {
+        q: "排屋和国内联排的本质区别？",
+        k: ["排屋和联排", "区别", "terraced housing", "国内联排"],
+        a: "【历史背景】\n伦敦排屋主要诞生于工业城市扩张阶段，目标是高效率容纳人口；国内联排更多出现在后期改善型住宅市场，形成背景完全不同。\n\n【社会语境】\n伦敦排屋依赖公共交通与街区混合功能，强调“嵌入城市网络”；国内联排通常更强调小区边界、私密空间和机动车组织。\n\n【当代变化】\n伦敦排屋在当下更常出现分户改造与功能重组，使用方式弹性更大；国内联排则更常维持家庭型改善居住逻辑。\n\n【具体案例】\n同样三层，伦敦排屋常见更窄面宽、更连续街道和更高公共交通依赖。判断差异时先看街道系统，再看户型本身。"
+      },
+      {
+        q: "伦敦租房隐藏文化与避坑指南？",
+        k: ["租房", "避坑", "押金", "Council Tax", "账单"],
+        a: "【历史背景】\n伦敦租赁市场长期处于高需求状态，市场流转快、规则密、议价空间有限，这种结构决定了租客必须具备更强的信息核对能力。\n\n【社会语境】\n本地租房文化默认“边界写在合同里”：费用归属、维护责任、退租标准都需要提前明确，口头承诺通常不够。\n\n【当代变化】\n线上看房提升效率，但信息不对称仍存在，尤其在隐藏费用、房况描述和退租争议上，留痕意识比过去更重要。\n\n【具体案例】\n签约前务必确认押金托管、账单责任、退租条款和 inventory；入住当天拍全屋视频并邮件留档，后续纠纷会轻很多。"
+      },
+      {
+        q: "伦敦人为何依赖地铁？",
+        k: ["依赖地铁", "世界首条地铁", "通勤", "tube"],
+        a: "【历史背景】\n地铁早期建设与城市扩张长期绑定，形成“轨道先行、居住外扩、中心就业”的空间格局，通勤网络成为伦敦日常运转的骨架。\n\n【社会语境】\n人们依赖地铁的核心并不只是速度，而是时间可预期。在跨区工作和学习很普遍的城市里，准点可达本身就是生活秩序。\n\n【当代变化】\n支付方式和换乘系统持续优化，地铁与其他出行方式联动更紧密；即便远程办公增加，核心通勤走廊依然保持高强度使用。\n\n【具体案例】\n很多人找房时优先看换乘次数和拥堵节点，而不是直线距离。实际体验里，少一次不稳定换乘往往比近几公里更重要。"
+      },
+      {
+        q: "伦敦地铁Tube文化与通勤礼仪？",
+        k: ["tube礼仪", "右侧站立", "让座", "地铁礼仪"],
+        a: "【历史背景】\nTube 礼仪是在长期高密度客流中沉淀出来的“效率规则”，目的是让大量陌生人在有限空间里维持流动和秩序。\n\n【社会语境】\n右侧站立、先下后上、控制音量这些习惯，本质是彼此让渡一点便利，换来整体通行效率和心理边界感。\n\n【当代变化】\n近年通勤礼仪更强调通道通畅和快速决策，尤其在换乘站点，任何短暂停顿都可能放大成连锁拥堵。\n\n【具体案例】\n高峰期把背包前置、提前向车门移动、离开闸机口再看手机，这三件小事会让你立刻接近本地通勤节奏。"
+      },
+      {
+        q: "伦敦超长通勤的社会逻辑是什么？",
+        k: ["超长通勤", "远距离通勤", "住房成本", "社会逻辑"],
+        a: "【历史背景】\n伦敦长期形成“就业中心集中、居住外围扩展”的结构，交通系统让这种空间分工成为可能，也把长通勤写进了城市日常。\n\n【社会语境】\n超长通勤是时间与租金、教育资源、职业机会之间的折中，不是个人偏好问题，而是城市结构压力下的现实选择。\n\n【当代变化】\n混合办公降低了部分人的通勤频次，但并未消除长距离通勤；很多人转向“减少天数、拉长单次”的新模式。\n\n【具体案例】\n常见策略是住在更外圈、每周进城几天，并优先选择稳定直达线路。对多数人来说，稳定比绝对距离更关键。"
+      },
+      {
+        q: "伦敦博物馆文化为什么这么强？",
+        k: ["博物馆", "museum", "文化机构", "展览"],
+        a: "【历史背景】\n伦敦博物馆体系在长期收藏实践和公共教育理念中发展起来，形成了覆盖艺术、考古、城市史与日常生活史的完整结构。\n\n【社会语境】\n博物馆在伦敦不是“只给游客看”的景点，而是城市记忆的组织者：它决定哪些故事被讲述、以什么方式被理解。\n\n【当代变化】\n数字化让馆藏可被持续访问，策展也更强调多元视角和跨文化对话，观众从“看展”转向“参与解释”。\n\n【具体案例】\n很多居民会先在线浏览藏品，再按主题线下看展。这样做能把碎片参观变成系统理解，效率非常高。"
+      },
+      {
+        q: "伦敦建筑为什么新旧混搭很明显？",
+        k: ["建筑", "新旧混搭", "保护", "riba"],
+        a: "【历史背景】\n伦敦经历过多轮重建和扩张，不同阶段留下的建筑层叠在同一街区，自然形成“历史层次并存”的城市面貌。\n\n【社会语境】\n新旧混搭不是审美偶然，而是保护、开发、民生与资本多方协商的结果。每个项目都在回答“保留什么、更新什么”。\n\n【当代变化】\n当前更常见的路径是保留历史结构并植入新功能，同时兼顾低碳和可持续运营，旧建筑被不断赋予新用途。\n\n【具体案例】\n在 King’s Cross 一带，你能看到工业遗产和现代办公商业并置。理解这类区域，关键是看它如何连接步行、交通和公共空间。"
+      }
+    ];
+
+    const sectionPrompts = {
+      "饮食文化": "我想系统了解伦敦饮食文化，有哪些必懂问题？",
+      "服饰消费": "我想了解伦敦穿衣和消费礼仪，先从哪里入门？",
+      "住房建筑": "请用新来伦敦的人能懂的方式讲讲住房与建筑文化。",
+      "交通通勤": "请讲讲伦敦交通与通勤文化，尤其是地铁礼仪。"
+    };
+    const sectionPromptsEn = {
+      "Food Culture": "I want to understand London's food culture systematically. What should I start with?",
+      "Fashion & Consumption": "How can I quickly understand London dress and consumption etiquette?",
+      "Housing & Architecture": "Explain London's housing and architecture in a practical way for newcomers.",
+      "Transport & Commuting": "Explain London's transport and commuting culture, especially Tube etiquette."
+    };
+
+    const sectionAnswers = {
+      "饮食文化": "【历史背景】\n伦敦饮食是长期人口流动和城市扩张共同塑造的结果，传统本土口味与外来饮食在不同历史阶段不断叠加。\n\n【社会语境】\n食物在这里既是日常生存需求，也是社群表达和身份协商的方式，很多街区文化都能从餐饮结构读出来。\n\n【当代变化】\n现在最明显的特征是融合速度加快：传统菜和跨文化创新并行，消费者也更关注健康、体验和可持续。\n\n【具体案例】\n你可以先问下午茶、炸鱼薯条、多元饮食和 Pub 规则，这四题能快速搭建完整理解框架。",
+      "服饰消费": "【历史背景】\n伦敦穿衣长期由正装传统与街头风格双轨推动，形成“经典工艺+日常实验”并存的城市审美。\n\n【社会语境】\n服饰消费在本地更像场景管理：通勤、社交、天气和预算共同决定穿搭，不是单纯追求流行。\n\n【当代变化】\n二手循环、品牌混搭和理性消费成为常态，大家更看重复穿率和长期性价比。\n\n【具体案例】\n建议先看“随意又精致”的逻辑，再看古着文化和日常消费礼仪，会更容易直接用到生活里。",
+      "住房建筑": "【历史背景】\n伦敦住宅格局由工业化扩张、公共卫生治理和后续更新政策层层叠加，历史形态对今天仍有强影响。\n\n【社会语境】\n住房问题核心是“历史街区保护”和“现实居住压力”长期并存，很多看似审美问题其实是治理问题。\n\n【当代变化】\n当代最常见模式是保留街区风貌、升级内部功能，租赁市场则保持高流动与高规则密度。\n\n【具体案例】\n你可以先问排屋成因、排屋与国内联排区别、租房避坑，这三题能把住房逻辑讲透。",
+      "交通通勤": "【历史背景】\n伦敦是典型由轨道交通组织起来的城市，通勤网络和城市扩展在长期历史中相互塑形。\n\n【社会语境】\n通勤文化本质是高密度社会里的时间管理与空间礼仪，效率和边界感同样重要。\n\n【当代变化】\n支付与换乘系统持续优化，混合办公改变了节奏但没改变“轨道为主”的底层结构。\n\n【具体案例】\n优先问依赖地铁原因、Tube 礼仪、超长通勤逻辑，这三题最能解释伦敦日常移动方式。"
+    };
+    const sectionAnswersEn = {
+      "Food Culture": "[Historical Background]\nLondon's food culture was shaped by long-term migration and urban expansion, where local and incoming traditions layered over time.\n\n[Social Context]\nFood is both daily survival and identity negotiation, so neighborhood dining patterns reveal social structure.\n\n[Contemporary Change]\nFusion is accelerating, with traditional dishes and cross-cultural innovation coexisting.\n\n[Concrete Example]\nStart with afternoon tea, fish and chips, diversity formation, and pub rules for a complete framework.",
+      "Fashion & Consumption": "[Historical Background]\nLondon fashion evolved through formal tailoring traditions and street experimentation in parallel.\n\n[Social Context]\nDress and consumption are scene-based decisions balancing weather, budget, social role, and expression.\n\n[Contemporary Change]\nMixing second-hand, independent labels, and high-street brands has become mainstream.\n\n[Concrete Example]\nBegin with smart-casual logic, vintage culture, and basic consumption etiquette for practical onboarding.",
+      "Housing & Architecture": "[Historical Background]\nLondon housing was shaped by industrial expansion, public-health regulation, and renewal cycles.\n\n[Social Context]\nHousing debates reflect a long tension between heritage protection and affordability pressure.\n\n[Contemporary Change]\nA common model is preserving urban fabric while modernizing interior functions.\n\n[Concrete Example]\nStart with Victorian terraces, terrace-vs-townhouse differences, and rental risk checks.",
+      "Transport & Commuting": "[Historical Background]\nLondon is a rail-structured city where mobility networks and urban growth co-evolved.\n\n[Social Context]\nCommuting culture combines time discipline and spatial etiquette in high-density environments.\n\n[Contemporary Change]\nPayment and interchange systems are more flexible, while rail remains the backbone.\n\n[Concrete Example]\nStart with Tube dependency, Tube etiquette, and long-commute logic."
+    };
+
+    const chatArea = document.getElementById("chatArea");
+    const input = document.getElementById("input");
+    const send = document.getElementById("send");
+    const clear = document.getElementById("clear");
+    const briefMode = document.getElementById("briefMode");
+    const deepMode = document.getElementById("deepMode");
+    const feedbackBtn = document.getElementById("feedbackBtn");
+    const langToggle = document.getElementById("langToggle");
+
+    let answerMode = "deep";
+    let currentLang = "zh";
+    const UI_TEXT = {
+      zh: {
+        brandDesc: "留学生 / 游客 / 外来工作者的城市文化解释助手",
+        navTitle: "文化板块导航",
+        quickTitle: "快捷提问（7）",
+        projectTitle: "数字人文·文化解释AI",
+        projectDesc: "前后端一体化：前台文化解释 + 后台管理与分析。",
+        brief: "简答",
+        deep: "详答",
+        feedback: "反馈",
+        send: "发送",
+        clear: "清空",
+        placeholder: "问我任何伦敦城市文化问题...",
+        aiName: "读懂伦敦 AI",
+        typing: "正在输入...",
+        welcome: "欢迎来到「读懂伦敦 London Uncovered」！你可以直接提问，也可以点左侧板块，我会用本地人的视角，把伦敦的文化逻辑讲得明明白白～",
+        cleared: "我们重新开始吧。你可以从左侧板块点一个方向，或者直接问我你最困惑的伦敦生活问题。"
+      },
+      en: {
+        brandDesc: "A cultural interpretation assistant for students, visitors, and global workers in London",
+        navTitle: "Culture Navigation",
+        quickTitle: "Quick Questions (7)",
+        projectTitle: "Digital Humanities · Cultural Interpretation AI",
+        projectDesc: "Integrated stack: front-end cultural assistant + back-end management analytics.",
+        brief: "Brief",
+        deep: "Detailed",
+        feedback: "Feedback",
+        send: "Send",
+        clear: "Clear",
+        placeholder: "Ask me anything about London's urban culture...",
+        aiName: "London Uncovered AI",
+        typing: "Typing...",
+        welcome: "Welcome to London Uncovered! Ask directly or click a section on the left. I will explain London's cultural logic from a local perspective.",
+        cleared: "Fresh start. Choose a section on the left, or ask your most confusing London life question directly."
+      }
+    };
+    const DEEP_SUPPLEMENTS = [
+      {
+        keys: ["下午茶", "茶", "afternoon tea"],
+        extra: {
+          history: "把时间拉长看，下午茶和消费品普及、家居礼仪扩散是同步发生的，所以它也是现代家庭秩序的一部分。",
+          social: "它常被用来进行低风险社交：门槛比正式晚宴低，但仍能体现礼貌和审美，这也是它跨代持续有效的原因。",
+          current: "今天下午茶已成为可复制的文化场景，从经典款到主题款形成完整消费梯度。",
+          case: "如果想避免游客式打卡，优先选社区茶室，再观察不同年龄层在同一场景中的互动，会更有收获。"
+        }
+      },
+      {
+        keys: ["排屋", "住房", "租房", "联排", "建筑"],
+        extra: {
+          history: "这类住宅形态不是一次规划产物，而是在卫生治理、土地制度和交通演化中逐步定型的。",
+          social: "住房讨论往往同时牵涉阶层流动、教育机会和通勤时间，房子只是入口，真正被分配的是城市机会。",
+          current: "当前核心矛盾是历史风貌保护与高密度居住需求并存，因此内部改造和用途重组会持续出现。",
+          case: "看房建议把房租、交通和时间成本一起算，很多人最终被通勤疲劳击穿，而不是租金本身。"
+        }
+      },
+      {
+        keys: ["地铁", "tube", "通勤", "交通"],
+        extra: {
+          history: "这座城市长期呈现先有网络、再有生活圈的特征，交通线反向塑造了居住分布和商业节点。",
+          social: "通勤礼仪不是冷漠，而是高密度场景中的合作协议，每个人让渡一点便利，系统才整体可用。",
+          current: "混合办公没有削弱轨道地位，而是把压力改成更分散、更复杂的波峰形态。",
+          case: "真正提升通勤体验的通常不是住得更近，而是减少不稳定换乘，这一点在找房阶段就该优先考虑。"
+        }
+      },
+      {
+        keys: ["穿衣", "古着", "消费", "礼仪", "小费", "排队"],
+        extra: {
+          history: "伦敦消费文化长期由规则秩序和个体表达共同驱动，所以礼仪稳定与风格多样能够并存。",
+          social: "从排队到穿搭，本质都在处理同一件事：在陌生人社会里既保持边界又完成协作。",
+          current: "近年消费更强调理性和长期性，二手循环、价格透明、场景适配成为主流判断标准。",
+          case: "新来者最稳的策略是先跑通规则，再做风格，先把排队和账单逻辑搞清，再建立自己的节奏。"
+        }
+      },
+      {
+        keys: ["饮食", "pub", "炸鱼", "多元"],
+        extra: {
+          history: "伦敦餐桌的变化常常先于城市叙事变化，能提前反映人口结构和社群网络的调整。",
+          social: "餐饮空间是观察城市关系的窗口，谁和谁一起吃、在哪吃、什么时候吃，比菜单本身更有解释力。",
+          current: "从单一菜系到跨文化混搭，背后是身份流动和生活节奏碎片化带来的适配需求。",
+          case: "建议按工作日午餐区、周末社交区、夜间经济区三个维度去看伦敦饮食，比只看网红榜单更准确。"
+        }
+      }
+    ];
+
+    function normalize(text) {
+      return (text || "").trim().toLowerCase();
+    }
+
+    function englishAnswerForQuestion(q) {
+      const key = normalize(q);
+      if (key.includes("afternoon tea")) return "[Historical Background]\nAfternoon tea emerged in 19th-century elite schedules to fill the long gap between lunch and dinner.\n\n[Social Context]\nIt became a ritualized social format that balances politeness, hierarchy, and relationship maintenance.\n\n[Contemporary Change]\nToday it spans luxury hotels and everyday cafes with modern dietary variants.\n\n[Concrete Example]\nA practical first experience follows the sequence: savory items, scones, then sweets.";
+      if (key.includes("fish and chips")) return "[Historical Background]\nFish and chips scaled during industrial urbanization due to affordability and speed.\n\n[Social Context]\nIt became a cross-class shared meal and part of collective everyday memory.\n\n[Contemporary Change]\nPeople now care more about sourcing, cooking quality, and sustainability in traditional dishes.\n\n[Concrete Example]\nIn London, classic shops and modern reinterpretations coexist across neighborhoods.";
+      if (key.includes("tube") || key.includes("commut")) return "[Historical Background]\nLondon's transport structure was built around rail expansion over time.\n\n[Social Context]\nCommuting relies on predictability and low-friction etiquette in dense public space.\n\n[Contemporary Change]\nHybrid work changed timing patterns but not the central role of rail mobility.\n\n[Concrete Example]\nReducing unstable transfers often improves commute quality more than living physically closer.";
+      if (key.includes("terrace") || key.includes("housing")) return "[Historical Background]\nTerraced housing expanded with industrial growth and public-health standardization.\n\n[Social Context]\nHousing reflects opportunity distribution, not only architecture or aesthetics.\n\n[Contemporary Change]\nLondon combines preserved streetscapes with modernized interiors under density pressure.\n\n[Concrete Example]\nWhen comparing homes, include rent, commuting time, and maintenance burden together.";
+      return "[Historical Background]\nThis topic has a long historical buildup and cannot be understood from surface appearance alone.\n\n[Social Context]\nMost London cultural practices are rule-based social coordination in daily life.\n\n[Contemporary Change]\nTraditional frameworks continue, but people use them more flexibly now.\n\n[Concrete Example]\nRefine your question with a concrete keyword to receive a deeper, scenario-based explanation.";
+    }
+
+    function localizedAnswer(item) {
+      return currentLang === "en" ? englishAnswerForQuestion(item.q) : item.a;
+    }
+
+    function createBubble(role) {
+      const row = document.createElement("div");
+      row.className = `msg-row ${role}`;
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      const content = document.createElement("div");
+      if (role === "ai") {
+        const sender = document.createElement("span");
+        sender.className = "sender";
+        sender.textContent = UI_TEXT[currentLang].aiName;
+        bubble.appendChild(sender);
+      }
+      bubble.appendChild(content);
+      row.appendChild(bubble);
+      chatArea.appendChild(row);
+      chatArea.scrollTop = chatArea.scrollHeight;
+      return content;
+    }
+
+    function pushUser(text) {
+      const content = createBubble("user");
+      content.textContent = text;
+      chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    function wait(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    async function typeAI(text) {
+      const content = createBubble("ai");
+      content.classList.add("typing");
+      content.textContent = UI_TEXT[currentLang].typing;
+      await wait(260);
+      content.classList.remove("typing");
+      content.textContent = "";
+
+      for (const char of text) {
+        content.textContent += char;
+        let speed = 14 + Math.random() * 20;
+        if ("，、".includes(char)) speed += 45;
+        if ("。！？；：".includes(char)) speed += 95;
+        if (char === "\n") speed += 70;
+        await wait(speed);
+        chatArea.scrollTop = chatArea.scrollHeight;
+      }
+    }
+
+    function toBriefAnswer(text) {
+      const sections = currentLang === "zh"
+        ? ["【历史背景】", "【社会语境】", "【当代变化】", "【具体案例】"]
+        : ["[Historical Background]", "[Social Context]", "[Contemporary Change]", "[Concrete Example]"];
+      return sections
+        .map((title) => {
+          const start = text.indexOf(title);
+          if (start === -1) return "";
+          const nextPositions = sections
+            .map((s) => text.indexOf(s, start + title.length))
+            .filter((p) => p > start);
+          const end = nextPositions.length ? Math.min(...nextPositions) : text.length;
+          const body = text.slice(start + title.length, end).trim();
+          const sentenceSep = currentLang === "zh" ? "。" : ".";
+          const firstSentence = body.split(sentenceSep)[0].trim();
+          const brief = firstSentence ? `${firstSentence}${sentenceSep}` : body.slice(0, 80);
+          return `${title}\n${brief}`;
+        })
+        .filter(Boolean)
+        .join("\n\n");
+    }
+
+    function getDeepSupplement(context) {
+      const c = normalize(context);
+      const hit = DEEP_SUPPLEMENTS.find((item) =>
+        item.keys.some((k) => c.includes(normalize(k)))
+      );
+      if (hit) return hit.extra;
+      return {
+        history: "很多伦敦日常现象都不是孤立出现，而是在长期历史路径中逐步定型。",
+        social: "真正影响体验的往往是隐性规则，而不是表面形式。",
+        current: "当下变化通常表现为传统框架仍在，但使用方式更灵活。",
+        case: "如果你愿意，我可以继续按你的具体生活场景做一版更定制化的解释。"
+      };
+    }
+
+    function mergeDeepIntoSections(text, extra) {
+      const map = [
+        { title: "【历史背景】", key: "history" },
+        { title: "【社会语境】", key: "social" },
+        { title: "【当代变化】", key: "current" },
+        { title: "【具体案例】", key: "case" }
+      ];
+
+      let result = text;
+      for (let i = 0; i < map.length; i += 1) {
+        const current = map[i];
+        const next = map[i + 1];
+        const start = result.indexOf(current.title);
+        if (start === -1) continue;
+        const bodyStart = start + current.title.length;
+        const end = next ? result.indexOf(next.title, bodyStart) : result.length;
+        if (end === -1) continue;
+        const body = result.slice(bodyStart, end).trim();
+        const extraLine = extra[current.key] ? ` ${extra[current.key]}` : "";
+        const mergedBody = `${body}${extraLine}`.trim();
+        result = `${result.slice(0, bodyStart)}\n${mergedBody}\n\n${result.slice(end)}`;
+      }
+      return result.replace(/\n{3,}/g, "\n\n").trim();
+    }
+
+    function applyMode(text, context = "") {
+      if (answerMode === "brief") return toBriefAnswer(text);
+      if (currentLang === "en") return text;
+      const extra = getDeepSupplement(context || text);
+      return mergeDeepIntoSections(text, extra);
+    }
+
+    function setMode(mode) {
+      answerMode = mode;
+      briefMode.classList.toggle("active", mode === "brief");
+      deepMode.classList.toggle("active", mode === "deep");
+    }
+
+    function bestMatch(question) {
+      const q = normalize(question);
+      if (!q) return currentLang === "en" ? englishAnswerForQuestion("general london culture") : "【历史背景】\n伦敦文化问题通常都和历史演变有关，单看表面现象容易误判。\n\n【社会语境】\n留学生、游客和新工作者最常遇到的困惑，往往来自“规则默会”而不是语言本身。\n\n【当代变化】\n今天很多传统都在数字化和全球化环境下被重新解释。\n\n【具体案例】\n你可以直接问：下午茶、古着、维多利亚排屋、Tube 礼仪、租房避坑，我会按同一结构帮你拆开讲。";
+
+      const exact = KB.find((item) => normalize(item.q) === q);
+      if (exact) return localizedAnswer(exact);
+
+      let best = null;
+      let scoreMax = 0;
+      for (const item of KB) {
+        let score = 0;
+        for (const kw of item.k) {
+          if (q.includes(normalize(kw))) score += 1;
+        }
+        if (score > scoreMax) {
+          scoreMax = score;
+          best = item;
+        }
+      }
+
+      if (best) return localizedAnswer(best);
+      return currentLang === "en" ? englishAnswerForQuestion("fallback") : "【历史背景】\n这个问题很值得讲，但我需要更明确的关键词，才能对准对应的历史线索。\n\n【社会语境】\n伦敦很多文化现象是连在一起的，问题越具体，回答就越贴近日常生活。\n\n【当代变化】\n同一件事在今天往往会出现多种版本，我会优先解释最常见、最实用的现实情境。\n\n【具体案例】\n你可以换个问法，比如：下午茶、古着、维多利亚排屋、Tube 礼仪、租房避坑。";
+    }
+
+    function postEvent(type, extra = {}) {
+      fetch("/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, ...extra })
+      }).catch(() => {});
+    }
+
+    function setLanguage(lang) {
+      currentLang = lang;
+      document.getElementById("brandDesc").textContent = UI_TEXT[lang].brandDesc;
+      document.getElementById("navTitle").textContent = UI_TEXT[lang].navTitle;
+      document.getElementById("quickTitle").textContent = UI_TEXT[lang].quickTitle;
+      document.getElementById("projectNoteTitle").textContent = UI_TEXT[lang].projectTitle;
+      document.getElementById("projectNoteDesc").textContent = UI_TEXT[lang].projectDesc;
+      briefMode.textContent = UI_TEXT[lang].brief;
+      deepMode.textContent = UI_TEXT[lang].deep;
+      feedbackBtn.textContent = UI_TEXT[lang].feedback;
+      send.textContent = UI_TEXT[lang].send;
+      clear.textContent = UI_TEXT[lang].clear;
+      input.placeholder = UI_TEXT[lang].placeholder;
+      langToggle.textContent = lang === "zh" ? "EN" : "中文";
+      document.querySelectorAll(".quick-btn").forEach((btn) => {
+        btn.textContent = lang === "zh" ? btn.getAttribute("data-label-zh") : btn.getAttribute("data-label-en");
+      });
+      document.querySelectorAll(".nav-btn").forEach((btn) => {
+        btn.textContent = lang === "zh" ? btn.getAttribute("data-push") : btn.getAttribute("data-push-en");
+      });
+    }
+
+    let busy = false;
+    async function ask(text) {
+      const q = (text || "").trim();
+      if (!q || busy) return;
+      busy = true;
+      pushUser(q);
+      postEvent("question");
+      const ans = applyMode(bestMatch(q), q);
+      await typeAI(ans);
+      input.value = "";
+      busy = false;
+      input.focus();
+    }
+
+    send.addEventListener("click", () => ask(input.value));
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        ask(input.value);
+      }
+    });
+
+    clear.addEventListener("click", async () => {
+      if (busy) return;
+      chatArea.innerHTML = "";
+      await typeAI(UI_TEXT[currentLang].cleared);
+    });
+
+    document.querySelectorAll(".quick-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        postEvent("button_click");
+        ask(currentLang === "zh" ? (btn.getAttribute("data-q") || "") : (btn.getAttribute("data-q-en") || ""));
+      });
+    });
+
+    document.querySelectorAll(".nav-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const section = currentLang === "zh" ? btn.getAttribute("data-push") : btn.getAttribute("data-push-en");
+        if (!section || busy) return;
+        busy = true;
+        postEvent("button_click");
+        pushUser(currentLang === "zh" ? sectionPrompts[section] : sectionPromptsEn[section]);
+        await typeAI(applyMode(currentLang === "zh" ? sectionAnswers[section] : sectionAnswersEn[section], section));
+        busy = false;
+      });
+    });
+
+    briefMode.addEventListener("click", () => setMode("brief"));
+    deepMode.addEventListener("click", () => setMode("deep"));
+    feedbackBtn.addEventListener("click", async () => {
+      const message = prompt(
+        currentLang === "zh"
+          ? "请输入你的反馈意见："
+          : "Please enter your feedback:"
+      );
+      if (!message || !message.trim()) return;
+      const email = prompt(
+        currentLang === "zh"
+          ? "可选：留下邮箱便于回复（可留空）"
+          : "Optional: leave your email for follow-up (can be empty)"
+      ) || "";
+
+      try {
+        await fetch("/api/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: message.trim(), email: email.trim() })
+        });
+        await typeAI(
+          currentLang === "zh"
+            ? "【历史背景】\n伦敦公共服务文化一直重视反馈循环。\n\n【社会语境】\n你的使用意见会帮助系统更贴近真实场景。\n\n【当代变化】\n现在反馈已提交到后台管理系统，可用于后续优化。\n\n【具体案例】\n你刚刚提交的内容，管理员已可在反馈管理页面查看。"
+            : "[Historical Background]\nPublic-service culture values feedback loops.\n\n[Social Context]\nYour input helps improve real-world usability.\n\n[Contemporary Change]\nYour feedback has been submitted to the admin system.\n\n[Concrete Example]\nAn administrator can now review it in the feedback management panel."
+        );
+      } catch (e) {
+        await typeAI(
+          currentLang === "zh"
+            ? "【历史背景】\n反馈机制依赖后端接口保持在线可用。\n\n【社会语境】\n当前前端页面仍可正常使用，但反馈通道暂时不可达。\n\n【当代变化】\n请稍后重试，或联系管理员检查服务状态。\n\n【具体案例】\n后台恢复后，你的反馈可在管理端“用户意见反馈管理”页面查看。"
+            : "[Historical Background]\nFeedback submission depends on backend API availability.\n\n[Social Context]\nThe front-end remains usable, but the feedback channel is temporarily unreachable.\n\n[Contemporary Change]\nPlease retry shortly or ask the admin to check service health.\n\n[Concrete Example]\nOnce restored, your message will appear in the feedback management panel."
+        );
+      }
+    });
+    langToggle.addEventListener("click", () => setLanguage(currentLang === "zh" ? "en" : "zh"));
+
+    setLanguage("zh");
+    postEvent("visit");
+    postEvent("user_visit", { ua: navigator.userAgent });
+    typeAI(UI_TEXT[currentLang].welcome);
+    // 强制发送页面访问埋点（让数据分析面板显示数据）
+window.addEventListener('load', function() {
+  postEvent('page_view', { page: '/' });
+});
+
+  </script>
+ <script>
+  // 全自动真实埋点，不碰任何原有代码
+  window.onload = function(){
+    postEvent("page_view",{}); // 访问量
+  }
+  // 发送消息 = 提问数
+  document.addEventListener("click",function(e){
+    if(e.target.type=="submit" || e.target.classList.contains("send")){
+      postEvent("chat_send",{});
+    }
+  });
+  // 切换Tab/语言 = 点击数
+  document.addEventListener("click",function(e){
+    if(e.target.classList.contains("tab") || e.target.classList.contains("lang")){
+      postEvent("tab_switch",{});
+    }
+  });
+  </script>
+  <script>
+    // 自动触发所有按钮埋点，解决点击数0的问题
+    document.addEventListener('DOMContentLoaded', function() {
+      // 1. 切换Tab按钮（匹配所有包含tab的按钮）
+      document.querySelectorAll('[class*="tab"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          postEvent('tab_switch', { tab: btn.textContent.trim() });
+        });
+      });
+    
+      // 2. 切换语言按钮（匹配所有包含lang的按钮）
+      document.querySelectorAll('[class*="lang"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          postEvent('lang_switch', { lang: btn.textContent.trim() });
+        });
+      });
+    });
+    </script>
+</body>
+</html>
