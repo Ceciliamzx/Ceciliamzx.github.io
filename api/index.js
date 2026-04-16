@@ -62,4 +62,25 @@ app.post('/api/faq', async (req, res) => {
 });
 
 // 必须导出app，禁止加app.listen
+// ===================== 新增后台统计接口 =====================
+app.get('/api/dashboard', async (req, res) => {
+  try {
+    // 读取埋点和FAQ数据
+    const events = store.events || [];
+    const faq = store.faq || [];
+
+    // 统计数据（真实计算访问/提问/点击）
+    const analytics = {
+      visits: events.filter(e => e.type === 'page_view').length,
+      questions: events.filter(e => e.type === 'chat_send').length,
+      buttonClicks: events.filter(e => e.type === 'tab_switch' || e.type === 'lang_switch').length
+    };
+    const faqCount = faq.length;
+
+    res.json({ analytics, faqCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+// ==========================================================
 module.exports = app;
