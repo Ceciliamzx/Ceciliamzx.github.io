@@ -1,86 +1,76 @@
 const express = require('express');
 const cors = require('cors');
-const { kv } = require('@vercel/kv');
 const app = express();
 
-// 中间件
+// 必须加：解析JSON请求体，解决接口报错
 app.use(cors());
 app.use(express.json());
 
-// 1. 埋点接口：数据永久存入KV
-app.post('/api/events', async (req, res) => {
+// 初始化内存存储，包含所有字段，避免undefined
+let store = {
+  events: [],
+  feedback: [],
+  faq: [] // 必须初始化，不然FAQ存不住
+};
+
+// 1. 埋点接口（已正常，保留）
+app.post('/api/events', (req, res) => {
   try {
     const event = req.body;
     event.timestamp = new Date().toISOString();
-    await kv.lpush('events', event);
+    store.events.push(event);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 2. 后台获取埋点数据：从KV读取
-app.get('/api/events', async (req, res) => {
+// 2. 读取埋点接口（已正常，保留）
+app.get('/api/events', (req, res) => {
   try {
-    const events = await kv.lrange('events', 0, -1);
-    res.json(events.reverse());
+    res.json(store.events.reverse());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 3. 用户反馈接口
-app.post('/api/feedback', async (req, res) => {
+// 3. 用户反馈接口（已正常，保留）
+app.post('/api/feedback', (req, res) => {
   try {
     const feedback = req.body;
     feedback.timestamp = new Date().toISOString();
-    await kv.lpush('feedback', feedback);
+    store.feedback.push(feedback);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 4. 后台获取反馈
-app.get('/api/feedback', async (req, res) => {
+// 4. 读取反馈接口（已正常，保留）
+app.get('/api/feedback', (req, res) => {
   try {
-    const feedback = await kv.lrange('feedback', 0, -1);
-    res.json(feedback.reverse());
+    res.json(store.feedback.reverse());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 5. FAQ管理接口
-app.get('/api/faq', async (req, res) => {
-  const faq = await kv.get('faq') || [];
-  res.json(faq);
-});
-app.post('/api/faq', async (req, res) => {
-  await kv.set('faq', req.body);
-  res.json({ success: true });
-});
-
-// 必须导出app，禁止加app.listen
-// ===================== 新增后台统计接口 =====================
-app.get('/api/dashboard', async (req, res) => {
+// 5. FAQ接口（修正路径为/faqs，和admin里的调用路径完全匹配！）
+app.get('/api/faqs', (req, res) => {
   try {
-    // 读取埋点和FAQ数据
-    const events = store.events || [];
-    const faq = store.faq || [];
-
-    // 统计数据（真实计算访问/提问/点击）
-    const analytics = {
-      visits: events.filter(e => e.type === 'page_view').length,
-      questions: events.filter(e => e.type === 'chat_send').length,
-      buttonClicks: events.filter(e => e.type === 'tab_switch' || e.type === 'lang_switch').length
-    };
-    const faqCount = faq.length;
-
-    res.json({ analytics, faqCount });
+    res.json(store.faq);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-// ==========================================================
+app.post('/api/faqs', (req, res) => {
+  try {
+    store.faq = req.body;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Vercel强制要求：导出app，不能加app.listen
 module.exports = app;
