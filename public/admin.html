@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>London Uncovered Admin</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f6f8fb;
+      color: #18263d;
+    }
+
+    .wrap {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      height: 100vh;
+    }
+
+    .side {
+      background: #1a2b48;
+      color: #fff;
+      padding: 16px;
+    }
+
+    .side button {
+      width: 100%;
+      margin: 6px 0;
+      padding: 10px;
+      background: #1a2b48;
+      color: #fff;
+      border: 1px solid #9aa8bc;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: left;
+      font-size: 15px;
+    }
+
+    .side button:hover {
+      background: #2b446a;
+    }
+
+    .main {
+      padding: 18px;
+      overflow: auto;
+    }
+
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .lang, .small-btn {
+      padding: 8px 12px;
+      border: 1px solid #b8c2d0;
+      border-radius: 8px;
+      cursor: pointer;
+      background: #fff;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid #d8dfeb;
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .card h3 {
+      margin: 12px 0 0;
+      font-size: 18px;
+    }
+
+    .panel {
+      display: none;
+      background: #fff;
+      border: 1px solid #d8dfeb;
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .panel.active {
+      display: block;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border-bottom: 1px solid #e5ebf4;
+      padding: 8px;
+      font-size: 13px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    input, textarea {
+      width: 100%;
+      border: 1px solid #c8d2e2;
+      border-radius: 8px;
+      padding: 8px;
+      margin: 5px 0;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .actions-cell button {
+      margin-right: 8px;
+    }
+
+    .empty {
+      color: #64748b;
+      padding: 12px 0;
+    }
+
+    @media (max-width: 900px) {
+      .wrap {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+
+      .cards,
+      .row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <aside class="side">
+      <h2 id="adminTitle">后台管理</h2>
+      <button data-tab="dashboard" data-i18n="dash">数据分析面板</button>
+      <button data-tab="faq" data-i18n="faq">知识库/FAQ更新</button>
+      <button data-tab="feedback" data-i18n="feedback">用户意见反馈管理</button>
+      <button data-tab="users" data-i18n="users">用户管理</button>
+      <button data-tab="settings" data-i18n="settings">系统基础设置</button>
+    </aside>
+
+    <main class="main">
+      <div class="top">
+        <h2 id="pageTitle">数据分析面板</h2>
+        <button class="lang" id="langBtn">EN</button>
+      </div>
+
+      <section id="dashboard" class="panel active">
+        <div class="cards">
+          <div class="card">
+            <div id="kpiVisitsLabel">访问量</div>
+            <h3 id="kpiVisits">0</h3>
+          </div>
+          <div class="card">
+            <div id="kpiQuestionsLabel">用户提问</div>
+            <h3 id="kpiQuestions">0</h3>
+          </div>
+          <div class="card">
+            <div id="kpiClicksLabel">按钮点击</div>
+            <h3 id="kpiClicks">0</h3>
+          </div>
+          <div class="card">
+            <div id="kpiFaqLabel">FAQ总数</div>
+            <h3 id="kpiFaq">0</h3>
+          </div>
+        </div>
+      </section>
+
+      <section id="faq" class="panel">
+        <div class="row">
+          <input id="qZh" placeholder="问题（中文）" />
+          <input id="qEn" placeholder="Question (EN)" />
+        </div>
+        <div class="row">
+          <textarea id="aZh" rows="5" placeholder="回答（中文）"></textarea>
+          <textarea id="aEn" rows="5" placeholder="Answer (EN)"></textarea>
+        </div>
+        <button class="small-btn" id="saveFaq">保存FAQ</button>
+        <table id="faqTable"></table>
+      </section>
+
+      <section id="feedback" class="panel">
+        <table id="feedbackTable"></table>
+      </section>
+
+      <section id="users" class="panel">
+        <table id="usersTable"></table>
+      </section>
+
+      <section id="settings" class="panel">
+        <pre id="settingsBox"></pre>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const dict = {
+      zh: {
+        admin: "后台管理",
+        dash: "数据分析面板",
+        faq: "知识库/FAQ更新",
+        feedback: "用户意见反馈管理",
+        users: "用户管理",
+        settings: "系统基础设置",
+        visits: "访问量",
+        questions: "用户提问",
+        clicks: "按钮点击",
+        faqCount: "FAQ总数",
+        saveSuccess: "FAQ 保存成功",
+        saveFailed: "FAQ 保存失败",
+        deleteText: "删除",
+        noData: "暂无数据"
+      },
+      en: {
+        admin: "Admin Panel",
+        dash: "Analytics Dashboard",
+        faq: "Knowledge Base / FAQ",
+        feedback: "Feedback Management",
+        users: "User Management",
+        settings: "System Settings",
+        visits: "Visits",
+        questions: "Questions",
+        clicks: "Button Clicks",
+        faqCount: "FAQ Count",
+        saveSuccess: "FAQ saved successfully",
+        saveFailed: "Failed to save FAQ",
+        deleteText: "Delete",
+        noData: "No data"
+      }
+    };
+
+    let lang = "zh";
+    let activeTab = "dashboard";
+
+    function t(k) {
+      return dict[lang][k] || k;
+    }
+
+    function setLang() {
+      document.getElementById("adminTitle").textContent = t("admin");
+      document.querySelectorAll("[data-i18n]").forEach(el => {
+        el.textContent = t(el.dataset.i18n);
+      });
+      document.getElementById("kpiVisitsLabel").textContent = t("visits");
+      document.getElementById("kpiQuestionsLabel").textContent = t("questions");
+      document.getElementById("kpiClicksLabel").textContent = t("clicks");
+      document.getElementById("kpiFaqLabel").textContent = t("faqCount");
+      document.getElementById("pageTitle").textContent = t(document.querySelector(`[data-tab="${activeTab}"]`).dataset.i18n);
+      document.getElementById("langBtn").textContent = lang === "zh" ? "EN" : "中文";
+    }
+
+    async function getJSON(url, options = {}) {
+      const res = await fetch(url, options);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return res.json();
+    }
+
+    function switchTab(tab) {
+      activeTab = tab;
+      document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+      document.getElementById(tab).classList.add("active");
+      setLang();
+    }
+
+    async function loadDashboard() {
+      try {
+        const [events, faqList] = await Promise.all([
+          getJSON("/api/events"),
+          getJSON("/api/faqs")
+        ]);
+
+        const visits = events.filter(i => i.type === "page_view").length;
+        const questions = events.filter(i => i.type === "chat_send" || i.type === "question").length;
+        const clicks = events.filter(i =>
+          i.type === "button_click" ||
+          i.type === "tab_switch" ||
+          i.type === "lang_switch"
+        ).length;
+        const faqNum = Array.isArray(faqList) ? faqList.length : 0;
+
+        document.getElementById("kpiVisits").textContent = visits;
+        document.getElementById("kpiQuestions").textContent = questions;
+        document.getElementById("kpiClicks").textContent = clicks;
+        document.getElementById("kpiFaq").textContent = faqNum;
+      } catch (e) {
+        document.getElementById("kpiVisits").textContent = "0";
+        document.getElementById("kpiQuestions").textContent = "0";
+        document.getElementById("kpiClicks").textContent = "0";
+        document.getElementById("kpiFaq").textContent = "0";
+      }
+    }
+
+    async function loadFaqs() {
+      try {
+        const faqs = await getJSON("/api/faqs");
+        const table = document.getElementById("faqTable");
+
+        if (!Array.isArray(faqs) || faqs.length === 0) {
+          table.innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+          return;
+        }
+
+        table.innerHTML =
+          "<tr><th>ID</th><th>ZH</th><th>EN</th><th>Action</th></tr>" +
+          faqs.map(f => `
+            <tr>
+              <td>${f.id}</td>
+              <td>
+                <div><strong>Q:</strong> ${f.question_zh || ""}</div>
+                <div><strong>A:</strong> ${f.answer_zh || ""}</div>
+              </td>
+              <td>
+                <div><strong>Q:</strong> ${f.question_en || ""}</div>
+                <div><strong>A:</strong> ${f.answer_en || ""}</div>
+              </td>
+              <td class="actions-cell">
+                <button class="small-btn" onclick="delFaq(${f.id})">${t("deleteText")}</button>
+              </td>
+            </tr>
+          `).join("");
+      } catch (e) {
+        document.getElementById("faqTable").innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+      }
+    }
+
+    async function delFaq(id) {
+      try {
+        await getJSON(`/api/faqs/${id}`, { method: "DELETE" });
+        await loadFaqs();
+        await loadDashboard();
+      } catch (e) {
+        alert("删除失败");
+      }
+    }
+
+    window.delFaq = delFaq;
+
+    async function loadFeedback() {
+      try {
+        const rows = await getJSON("/api/feedback");
+        const table = document.getElementById("feedbackTable");
+
+        if (!Array.isArray(rows) || rows.length === 0) {
+          table.innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+          return;
+        }
+
+        table.innerHTML =
+          "<tr><th>ID</th><th>Message</th><th>Email</th><th>Time</th></tr>" +
+          rows.map(r => `
+            <tr>
+              <td>${r.id || ""}</td>
+              <td>${r.message || ""}</td>
+              <td>${r.email || ""}</td>
+              <td>${r.timestamp || ""}</td>
+            </tr>
+          `).join("");
+      } catch (e) {
+        document.getElementById("feedbackTable").innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+      }
+    }
+
+    async function loadUsers() {
+      try {
+        const users = await getJSON("/api/users");
+        const table = document.getElementById("usersTable");
+
+        if (!Array.isArray(users) || users.length === 0) {
+          table.innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+          return;
+        }
+
+        table.innerHTML =
+          "<tr><th>ID</th><th>User Agent</th><th>Time</th></tr>" +
+          users.map(u => `
+            <tr>
+              <td>${u.id || ""}</td>
+              <td>${u.ua || ""}</td>
+              <td>${u.time || ""}</td>
+            </tr>
+          `).join("");
+      } catch (e) {
+        document.getElementById("usersTable").innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+      }
+    }
+
+    async function loadSettings() {
+      try {
+        const s = await getJSON("/api/settings");
+        document.getElementById("settingsBox").textContent = JSON.stringify(s, null, 2);
+      } catch (e) {
+        document.getElementById("settingsBox").textContent = "{}";
+      }
+    }
+
+    document.querySelectorAll("[data-tab]").forEach(btn => {
+      btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+    });
+
+    document.getElementById("langBtn").addEventListener("click", async () => {
+      lang = lang === "zh" ? "en" : "zh";
+      setLang();
+      await loadFaqs();
+      await loadFeedback();
+      await loadUsers();
+    });
+
+    document.getElementById("saveFaq").addEventListener("click", async () => {
+      const payload = {
+        question_zh: document.getElementById("qZh").value.trim(),
+        question_en: document.getElementById("qEn").value.trim(),
+        answer_zh: document.getElementById("aZh").value.trim(),
+        answer_en: document.getElementById("aEn").value.trim()
+      };
+
+      if (!payload.question_zh || !payload.question_en) {
+        alert("中英文问题都需要填写");
+        return;
+      }
+
+      try {
+        await getJSON("/api/faqs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        document.getElementById("qZh").value = "";
+        document.getElementById("qEn").value = "";
+        document.getElementById("aZh").value = "";
+        document.getElementById("aEn").value = "";
+
+        await loadFaqs();
+        await loadDashboard();
+
+        alert(t("saveSuccess"));
+      } catch (e) {
+        alert(t("saveFailed"));
+      }
+    });
+
+    Promise.all([
+      loadDashboard(),
+      loadFaqs(),
+      loadFeedback(),
+      loadUsers(),
+      loadSettings()
+    ]).then(setLang);
+  </script>
+</body>
+</html>
