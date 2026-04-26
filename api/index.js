@@ -1,22 +1,17 @@
 const express = require('express');
 const cors = require('cors');
 const { kv } = require('@vercel/kv');
-
 const app = express();
 
+// 中间件
 app.use(cors());
 app.use(express.json());
 
-function toSafeArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
+// 1. 埋点接口：数据永久存入KV
 app.post('/api/events', async (req, res) => {
   try {
-    const event = {
-      ...req.body,
-      timestamp: new Date().toISOString()
-    };
+    const event = req.body;
+    event.timestamp = new Date().toISOString();
     await kv.lpush('events', event);
     res.json({ success: true });
   } catch (err) {
@@ -24,6 +19,7 @@ app.post('/api/events', async (req, res) => {
   }
 });
 
+// 2. 后台获取埋点数据：从KV读取
 app.get('/api/events', async (req, res) => {
   try {
     const events = await kv.lrange('events', 0, -1);
@@ -33,15 +29,11 @@ app.get('/api/events', async (req, res) => {
   }
 });
 
+// 3. 用户反馈接口
 app.post('/api/feedback', async (req, res) => {
   try {
-    const feedback = {
-      id: Date.now(),
-      message: req.body?.message || '',
-      email: req.body?.email || '',
-      reply: req.body?.reply || '',
-      timestamp: new Date().toISOString()
-    };
+    const feedback = req.body;
+    feedback.timestamp = new Date().toISOString();
     await kv.lpush('feedback', feedback);
     res.json({ success: true });
   } catch (err) {
@@ -49,6 +41,7 @@ app.post('/api/feedback', async (req, res) => {
   }
 });
 
+// 4. 后台获取反馈
 app.get('/api/feedback', async (req, res) => {
   try {
     const feedback = await kv.lrange('feedback', 0, -1);
@@ -58,87 +51,25 @@ app.get('/api/feedback', async (req, res) => {
   }
 });
 
-// FAQ：统一使用 /api/faqs
-app.get('/api/faqs', async (req, res) => {
-  try {
-    const faqs = await kv.get('faqs');
-    res.json(toSafeArray(faqs));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+// 5. FAQ管理接口
+// 获取所有FAQ
+app.get('/api/faq', async (req, res) => {
+  const faq = await kv.get('faq') || []; // 获取FAQ，默认为空数组
+  res.json(faq);
 });
 
-app.post('/api/faqs', async (req, res) => {
+// 添加新的FAQ
+app.post('/api/faq', async (req, res) => {
   try {
-    const faqs = toSafeArray(await kv.get('faqs'));
-    const newFaq = {
-      id: Date.now(),
-      question_zh: (req.body?.question_zh || '').trim(),
-      question_en: (req.body?.question_en || '').trim(),
-      answer_zh: (req.body?.answer_zh || '').trim(),
-      answer_en: (req.body?.answer_en || '').trim()
-    };
-
-    if (!newFaq.question_zh || !newFaq.question_en) {
-      return res.status(400).json({ error: 'question_zh and question_en are required' });
-    }
-
-    faqs.push(newFaq);
-    await kv.set('faqs', faqs);
-
-    res.json({ success: true, item: newFaq });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/faqs/:id', async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const faqs = toSafeArray(await kv.get('faqs'));
-    const nextFaqs = faqs.filter(item => Number(item.id) !== id);
-
-    await kv.set('faqs', nextFaqs);
+    const newFaq = req.body;
+    const existingFaq = await kv.get('faq') || []; // 获取现有FAQ
+    existingFaq.push(newFaq); // 将新FAQ添加到现有FAQ数组中
+    await kv.set('faq', existingFaq); // 更新FAQ数据
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 给后台页留兼容接口，避免 users/settings 面板报错
-app.get('/api/users', async (req, res) => {
-  try {
-    const events = await kv.lrange('events', 0, -1);
-    const users = events
-      .filter(item => item.type === 'user_visit')
-      .map((item, index) => ({
-        id: item.id || index + 1,
-        ua: item.ua || '',
-        time: item.timestamp || ''
-      }))
-      .reverse();
-
-    res.json(users);
-  } catch (err) {
-    res.json([]);
-  }
-});
-
-app.get('/api/settings', async (req, res) => {
-  try {
-    const settings = (await kv.get('settings')) || {
-      siteName: 'London Uncovered',
-      defaultLanguage: 'zh',
-      answerMode: 'deep'
-    };
-    res.json(settings);
-  } catch (err) {
-    res.json({
-      siteName: 'London Uncovered',
-      defaultLanguage: 'zh',
-      answerMode: 'deep'
-    });
-  }
-});
-
+// 必须导出app，禁止加app.listen
 module.exports = app;
