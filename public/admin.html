@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>London Uncovered Admin</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f6f8fb;
+      color: #18263d;
+    }
+
+    .wrap {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      height: 100vh;
+    }
+
+    .side {
+      background: #1a2b48;
+      color: #fff;
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    .side button {
+      width: 100%;
+      margin: 6px 0;
+      padding: 10px;
+      background: #1a2b48;
+      color: #fff;
+      border: 1px solid #9aa8bc;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: left;
+      font-size: 15px;
+    }
+
+    .side button:hover { background: #2b446a; }
+
+    .main { padding: 18px; overflow: auto; }
+
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .lang, .small-btn {
+      padding: 8px 12px;
+      border: 1px solid #b8c2d0;
+      border-radius: 8px;
+      cursor: pointer;
+      background: #fff;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid #d8dfeb;
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .card h3 { margin: 12px 0 0; font-size: 18px; }
+
+    .card.accent { border-left: 4px solid #d4af37; }
+
+    .panel {
+      display: none;
+      background: #fff;
+      border: 1px solid #d8dfeb;
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .panel.active { display: block; }
+
+    table { width: 100%; border-collapse: collapse; }
+
+    th, td {
+      border-bottom: 1px solid #e5ebf4;
+      padding: 8px;
+      font-size: 13px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th { background: #f0f4fa; font-weight: 600; }
+
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid #c8d2e2;
+      border-radius: 8px;
+      padding: 8px;
+      margin: 5px 0;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .actions-cell button { margin-right: 8px; }
+
+    .empty { color: #64748b; padding: 12px 0; }
+
+    .badge {
+      display: inline-block;
+      background: #e8eef7;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 11px;
+      margin: 2px;
+    }
+
+    .metric-bar {
+      background: #e8eef7;
+      border-radius: 6px;
+      height: 8px;
+      margin-top: 4px;
+    }
+
+    .metric-bar-fill {
+      background: #1a2b48;
+      border-radius: 6px;
+      height: 8px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 14px 0 6px;
+    }
+
+    @media (max-width: 900px) {
+      .wrap { grid-template-columns: 1fr; height: auto; }
+      .cards, .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <aside class="side">
+      <h2 id="adminTitle">后台管理</h2>
+      <button data-tab="dashboard" data-i18n="dash">数据分析面板</button>
+      <button data-tab="faq" data-i18n="faq">FAQ 更新</button>
+      <button data-tab="wiki" data-i18n="wiki">Wiki 知识库</button>
+      <button data-tab="metrics" data-i18n="metrics">可观测性监控</button>
+      <button data-tab="feedback" data-i18n="feedback">用户反馈管理</button>
+      <button data-tab="users" data-i18n="users">用户管理</button>
+      <button data-tab="settings" data-i18n="settings">系统设置</button>
+    </aside>
+
+    <main class="main">
+      <div class="top">
+        <h2 id="pageTitle">数据分析面板</h2>
+        <button class="lang" id="langBtn">EN</button>
+      </div>
+
+      <!-- Dashboard -->
+      <section id="dashboard" class="panel active">
+        <div class="cards">
+          <div class="card">
+            <div id="kpiVisitsLabel">访问量</div>
+            <h3 id="kpiVisits">0</h3>
+          </div>
+          <div class="card">
+            <div id="kpiQuestionsLabel">用户提问</div>
+            <h3 id="kpiQuestions">0</h3>
+          </div>
+          <div class="card">
+            <div id="kpiClicksLabel">按钮点击</div>
+            <h3 id="kpiClicks">0</h3>
+          </div>
+          <div class="card">
+            <div id="kpiFaqLabel">FAQ总数</div>
+            <h3 id="kpiFaq">0</h3>
+          </div>
+        </div>
+      </section>
+
+      <!-- FAQ -->
+      <section id="faq" class="panel">
+        <div class="row">
+          <input id="qZh" placeholder="问题（中文）" />
+          <input id="qEn" placeholder="Question (EN)" />
+        </div>
+        <div class="row">
+          <textarea id="aZh" rows="5" placeholder="回答（中文）"></textarea>
+          <textarea id="aEn" rows="5" placeholder="Answer (EN)"></textarea>
+        </div>
+        <button class="small-btn" id="saveFaq">保存 FAQ</button>
+        <table id="faqTable" style="margin-top:12px"></table>
+      </section>
+
+      <!-- Wiki -->
+      <section id="wiki" class="panel">
+        <div class="section-label" id="wikiFormLabel">新建文章</div>
+        <div class="row">
+          <input id="wTitleZh" placeholder="标题（中文）" />
+          <input id="wTitleEn" placeholder="Title (EN)" />
+        </div>
+        <div class="row">
+          <textarea id="wBodyZh" rows="6" placeholder="正文内容（中文）"></textarea>
+          <textarea id="wBodyEn" rows="6" placeholder="Article body (EN)"></textarea>
+        </div>
+        <input id="wTags" placeholder="标签（英文逗号分隔）: food, culture, history" style="max-width:400px" />
+        <br />
+        <button class="small-btn" id="saveWiki">保存文章</button>
+        <button class="small-btn" id="cancelWikiEdit" style="display:none;margin-left:8px">取消编辑</button>
+        <table id="wikiTable" style="margin-top:14px"></table>
+      </section>
+
+      <!-- Metrics / Observability -->
+      <section id="metrics" class="panel">
+        <div id="metricsSummary"></div>
+        <div class="section-label" id="metricsRecentLabel">近期查询记录</div>
+        <table id="metricsTable"></table>
+      </section>
+
+      <!-- Feedback -->
+      <section id="feedback" class="panel">
+        <table id="feedbackTable"></table>
+      </section>
+
+      <!-- Users -->
+      <section id="users" class="panel">
+        <table id="usersTable"></table>
+      </section>
+
+      <!-- Settings -->
+      <section id="settings" class="panel">
+        <pre id="settingsBox"></pre>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const dict = {
+      zh: {
+        admin: "后台管理",
+        dash: "数据分析面板",
+        faq: "FAQ 更新",
+        wiki: "Wiki 知识库",
+        metrics: "可观测性监控",
+        feedback: "用户反馈管理",
+        users: "用户管理",
+        settings: "系统设置",
+        visits: "访问量",
+        questions: "用户提问",
+        clicks: "按钮点击",
+        faqCount: "FAQ总数",
+        saveSuccess: "保存成功",
+        saveFailed: "保存失败",
+        deleteText: "删除",
+        editText: "编辑",
+        noData: "暂无数据",
+        wikiFormLabel: "新建文章",
+        metricsRecentLabel: "近期查询记录（最多20条）"
+      },
+      en: {
+        admin: "Admin Panel",
+        dash: "Analytics Dashboard",
+        faq: "FAQ Management",
+        wiki: "Wiki Knowledge Base",
+        metrics: "Observability",
+        feedback: "Feedback Management",
+        users: "User Management",
+        settings: "System Settings",
+        visits: "Visits",
+        questions: "Questions",
+        clicks: "Button Clicks",
+        faqCount: "FAQ Count",
+        saveSuccess: "Saved successfully",
+        saveFailed: "Save failed",
+        deleteText: "Delete",
+        editText: "Edit",
+        noData: "No data",
+        wikiFormLabel: "New Article",
+        metricsRecentLabel: "Recent Queries (up to 20)"
+      }
+    };
+
+    let lang = "zh";
+    let activeTab = "dashboard";
+    let editingWikiId = null;
+
+    function t(k) { return dict[lang][k] || k; }
+
+    function setLang() {
+      document.getElementById("adminTitle").textContent = t("admin");
+      document.querySelectorAll("[data-i18n]").forEach(el => {
+        el.textContent = t(el.dataset.i18n);
+      });
+      document.getElementById("kpiVisitsLabel").textContent = t("visits");
+      document.getElementById("kpiQuestionsLabel").textContent = t("questions");
+      document.getElementById("kpiClicksLabel").textContent = t("clicks");
+      document.getElementById("kpiFaqLabel").textContent = t("faqCount");
+      document.getElementById("wikiFormLabel").textContent = t("wikiFormLabel");
+      document.getElementById("metricsRecentLabel").textContent = t("metricsRecentLabel");
+      document.getElementById("pageTitle").textContent = t(document.querySelector(`[data-tab="${activeTab}"]`).dataset.i18n);
+      document.getElementById("langBtn").textContent = lang === "zh" ? "EN" : "中文";
+    }
+
+    async function getJSON(url, options = {}) {
+      const res = await fetch(url, options);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }
+
+    function switchTab(tab) {
+      activeTab = tab;
+      document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+      document.getElementById(tab).classList.add("active");
+      setLang();
+    }
+
+    // ── Dashboard ──────────────────────────────────────────────────────────────
+
+    async function loadDashboard() {
+      try {
+        const [events, faqList] = await Promise.all([
+          getJSON("/api/events"),
+          getJSON("/api/faqs")
+        ]);
+        document.getElementById("kpiVisits").textContent = events.filter(i => i.type === "page_view").length;
+        document.getElementById("kpiQuestions").textContent = events.filter(i => i.type === "chat_send" || i.type === "question").length;
+        document.getElementById("kpiClicks").textContent = events.filter(i => ["button_click","tab_switch","lang_switch"].includes(i.type)).length;
+        document.getElementById("kpiFaq").textContent = Array.isArray(faqList) ? faqList.length : 0;
+      } catch (_) {
+        ["kpiVisits","kpiQuestions","kpiClicks","kpiFaq"].forEach(id => {
+          document.getElementById(id).textContent = "0";
+        });
+      }
+    }
+
+    // ── FAQs ───────────────────────────────────────────────────────────────────
+
+    async function loadFaqs() {
+      try {
+        const faqs = await getJSON("/api/faqs");
+        const table = document.getElementById("faqTable");
+        if (!Array.isArray(faqs) || !faqs.length) {
+          table.innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+          return;
+        }
+        table.innerHTML =
+          `<tr><th>ID</th><th>${lang === "zh" ? "中文" : "Chinese"}</th><th>${lang === "zh" ? "英文" : "English"}</th><th></th></tr>` +
+          faqs.map(f => `
+            <tr>
+              <td>${f.id}</td>
+              <td><strong>Q:</strong> ${esc(f.question_zh)}<br><strong>A:</strong> ${esc(f.answer_zh)}</td>
+              <td><strong>Q:</strong> ${esc(f.question_en)}<br><strong>A:</strong> ${esc(f.answer_en)}</td>
+              <td class="actions-cell">
+                <button class="small-btn" onclick="delFaq(${f.id})">${t("deleteText")}</button>
+              </td>
+            </tr>`).join("");
+      } catch (_) {
+        document.getElementById("faqTable").innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+      }
+    }
+
+    async function delFaq(id) {
+      if (!confirm(lang === "zh" ? "确认删除？" : "Confirm delete?")) return;
+      try {
+        await getJSON(`/api/faqs/${id}`, { method: "DELETE" });
+        await Promise.all([loadFaqs(), loadDashboard()]);
+      } catch (_) { alert("删除失败"); }
+    }
+    window.delFaq = delFaq;
+
+    // ── Wiki ───────────────────────────────────────────────────────────────────
+
+    async function loadWiki() {
+      try {
+        const items = await getJSON("/api/wiki");
+        const table = document.getElementById("wikiTable");
+        if (!Array.isArray(items) || !items.length) {
+          table.innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+          return;
+        }
+        table.innerHTML =
+          `<tr><th>ID</th><th>${lang === "zh" ? "标题" : "Title"}</th><th>${lang === "zh" ? "标签" : "Tags"}</th><th>${lang === "zh" ? "更新时间" : "Updated"}</th><th></th></tr>` +
+          items.map(w => `
+            <tr>
+              <td>${w.id}</td>
+              <td>
+                <strong>${esc(lang === "zh" ? w.title_zh : w.title_en)}</strong><br>
+                <span style="color:#64748b;font-size:12px">${esc(lang === "zh" ? (w.body_zh || "").slice(0, 80) : (w.body_en || "").slice(0, 80))}…</span>
+              </td>
+              <td>${(w.tags || []).map(tag => `<span class="badge">${esc(tag)}</span>`).join("")}</td>
+              <td style="white-space:nowrap;font-size:12px">${(w.updated_at || "").slice(0, 10)}</td>
+              <td class="actions-cell">
+                <button class="small-btn" onclick="editWiki(${w.id})">${t("editText")}</button>
+                <button class="small-btn" onclick="delWiki(${w.id})">${t("deleteText")}</button>
+              </td>
+            </tr>`).join("");
+      } catch (_) {
+        document.getElementById("wikiTable").innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+      }
+    }
+
+    async function editWiki(id) {
+      try {
+        const items = await getJSON("/api/wiki");
+        const w = items.find(x => Number(x.id) === id);
+        if (!w) return;
+        editingWikiId = id;
+        document.getElementById("wTitleZh").value = w.title_zh || "";
+        document.getElementById("wTitleEn").value = w.title_en || "";
+        document.getElementById("wBodyZh").value = w.body_zh || "";
+        document.getElementById("wBodyEn").value = w.body_en || "";
+        document.getElementById("wTags").value = (w.tags || []).join(", ");
+        document.getElementById("wikiFormLabel").textContent = lang === "zh" ? "编辑文章" : "Edit Article";
+        document.getElementById("cancelWikiEdit").style.display = "";
+        document.getElementById("wTitleZh").scrollIntoView({ behavior: "smooth" });
+      } catch (_) { alert("加载失败"); }
+    }
+    window.editWiki = editWiki;
+
+    async function delWiki(id) {
+      if (!confirm(lang === "zh" ? "确认删除？" : "Confirm delete?")) return;
+      try {
+        await getJSON(`/api/wiki/${id}`, { method: "DELETE" });
+        await loadWiki();
+      } catch (_) { alert("删除失败"); }
+    }
+    window.delWiki = delWiki;
+
+    function resetWikiForm() {
+      editingWikiId = null;
+      ["wTitleZh","wTitleEn","wBodyZh","wBodyEn","wTags"].forEach(id => {
+        document.getElementById(id).value = "";
+      });
+      document.getElementById("wikiFormLabel").textContent = t("wikiFormLabel");
+      document.getElementById("cancelWikiEdit").style.display = "none";
+    }
+
+    document.getElementById("cancelWikiEdit").addEventListener("click", resetWikiForm);
+
+    document.getElementById("saveWiki").addEventListener("click", async () => {
+      const payload = {
+        title_zh: document.getElementById("wTitleZh").value.trim(),
+        title_en: document.getElementById("wTitleEn").value.trim(),
+        body_zh: document.getElementById("wBodyZh").value.trim(),
+        body_en: document.getElementById("wBodyEn").value.trim(),
+        tags: document.getElementById("wTags").value.trim()
+      };
+      if (!payload.title_zh) { alert(lang === "zh" ? "标题（中文）必填" : "Chinese title is required"); return; }
+      try {
+        if (editingWikiId) {
+          await getJSON(`/api/wiki/${editingWikiId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+        } else {
+          await getJSON("/api/wiki", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+        }
+        resetWikiForm();
+        await loadWiki();
+        alert(t("saveSuccess"));
+      } catch (_) { alert(t("saveFailed")); }
+    });
+
+    // ── Metrics / Observability ────────────────────────────────────────────────
+
+    async function loadMetrics() {
+      try {
+        const data = await getJSON("/api/metrics");
+        const summaryEl = document.getElementById("metricsSummary");
+        const tableEl = document.getElementById("metricsTable");
+
+        if (!data.summary) {
+          summaryEl.innerHTML = `<p class="empty">${lang === "zh" ? "暂无LLM查询数据（需接入Claude API后生效）" : "No LLM query data yet (requires Claude API key)"}</p>`;
+          tableEl.innerHTML = "";
+          return;
+        }
+
+        const s = data.summary;
+        const maxMs = Math.max(s.avg_total_ms, 1);
+
+        summaryEl.innerHTML = `
+          <div class="cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
+            <div class="card accent">
+              <div>${lang === "zh" ? "平均响应延迟" : "Avg Response"}</div>
+              <h3>${s.avg_total_ms} ms</h3>
+              <div class="metric-bar"><div class="metric-bar-fill" style="width:100%"></div></div>
+            </div>
+            <div class="card accent">
+              <div>${lang === "zh" ? "平均LLM耗时" : "Avg LLM Time"}</div>
+              <h3>${s.avg_llm_ms} ms</h3>
+              <div class="metric-bar"><div class="metric-bar-fill" style="width:${Math.round(s.avg_llm_ms/maxMs*100)}%"></div></div>
+            </div>
+            <div class="card accent">
+              <div>${lang === "zh" ? "平均检索耗时" : "Avg Retrieval"}</div>
+              <h3>${s.avg_retrieval_ms} ms</h3>
+              <div class="metric-bar"><div class="metric-bar-fill" style="width:${Math.round(s.avg_retrieval_ms/maxMs*100)}%"></div></div>
+            </div>
+          </div>
+          <div class="cards" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+            <div class="card">
+              <div>${lang === "zh" ? "记录查询数" : "Tracked Queries"}</div>
+              <h3>${s.count}</h3>
+            </div>
+            <div class="card">
+              <div>${lang === "zh" ? "平均输入Token" : "Avg Tokens In"}</div>
+              <h3>${s.avg_tokens_in}</h3>
+            </div>
+            <div class="card">
+              <div>${lang === "zh" ? "平均输出Token" : "Avg Tokens Out"}</div>
+              <h3>${s.avg_tokens_out}</h3>
+            </div>
+            <div class="card">
+              <div>${lang === "zh" ? "累计Token消耗" : "Total Tokens"}</div>
+              <h3>${s.total_tokens.toLocaleString()}</h3>
+            </div>
+          </div>`;
+
+        if (!data.recent || !data.recent.length) {
+          tableEl.innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+          return;
+        }
+
+        tableEl.innerHTML =
+          `<tr>
+            <th>${lang === "zh" ? "时间" : "Time"}</th>
+            <th>${lang === "zh" ? "问题" : "Question"}</th>
+            <th>${lang === "zh" ? "总延迟(ms)" : "Total(ms)"}</th>
+            <th>LLM(ms)</th>
+            <th>${lang === "zh" ? "检索(ms)" : "Retrieval(ms)"}</th>
+            <th>${lang === "zh" ? "Token入/出" : "Tokens in/out"}</th>
+            <th>${lang === "zh" ? "命中" : "Hits"}</th>
+          </tr>` +
+          data.recent.map(m => `
+            <tr>
+              <td style="white-space:nowrap;font-size:12px">${(m.timestamp || "").slice(11, 19)}</td>
+              <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.question)}">${esc((m.question || "").slice(0, 50))}</td>
+              <td>${m.total_ms || 0}</td>
+              <td>${m.llm_ms || 0}</td>
+              <td>${m.retrieval_ms || 0}</td>
+              <td>${m.tokens_in || 0} / ${m.tokens_out || 0}</td>
+              <td>${lang === "zh" ? `FAQ:${m.faq_hits||0} Wiki:${m.wiki_hits||0}` : `FAQ:${m.faq_hits||0} Wiki:${m.wiki_hits||0}`}</td>
+            </tr>`).join("");
+      } catch (_) {
+        document.getElementById("metricsSummary").innerHTML = `<p class="empty">${t("noData")}</p>`;
+        document.getElementById("metricsTable").innerHTML = "";
+      }
+    }
+
+    // ── Feedback ───────────────────────────────────────────────────────────────
+
+    async function loadFeedback() {
+      try {
+        const rows = await getJSON("/api/feedback");
+        const table = document.getElementById("feedbackTable");
+        if (!Array.isArray(rows) || !rows.length) {
+          table.innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+          return;
+        }
+        table.innerHTML =
+          "<tr><th>ID</th><th>Message</th><th>Email</th><th>Time</th></tr>" +
+          rows.map(r => `<tr>
+            <td>${r.id || ""}</td>
+            <td>${esc(r.message || "")}</td>
+            <td>${esc(r.email || "")}</td>
+            <td>${(r.timestamp || "").slice(0,10)}</td>
+          </tr>`).join("");
+      } catch (_) {
+        document.getElementById("feedbackTable").innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+      }
+    }
+
+    // ── Users ──────────────────────────────────────────────────────────────────
+
+    async function loadUsers() {
+      try {
+        const users = await getJSON("/api/users");
+        const table = document.getElementById("usersTable");
+        if (!Array.isArray(users) || !users.length) {
+          table.innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+          return;
+        }
+        table.innerHTML =
+          "<tr><th>ID</th><th>User Agent</th><th>Time</th></tr>" +
+          users.map(u => `<tr>
+            <td>${u.id || ""}</td>
+            <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${esc(u.ua || "")}</td>
+            <td>${(u.time || "").slice(0,10)}</td>
+          </tr>`).join("");
+      } catch (_) {
+        document.getElementById("usersTable").innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
+      }
+    }
+
+    // ── Settings ───────────────────────────────────────────────────────────────
+
+    async function loadSettings() {
+      try {
+        const s = await getJSON("/api/settings");
+        document.getElementById("settingsBox").textContent = JSON.stringify(s, null, 2);
+      } catch (_) {
+        document.getElementById("settingsBox").textContent = "{}";
+      }
+    }
+
+    // ── Utility ────────────────────────────────────────────────────────────────
+
+    function esc(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    // ── Events ─────────────────────────────────────────────────────────────────
+
+    document.querySelectorAll("[data-tab]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        switchTab(btn.dataset.tab);
+        if (btn.dataset.tab === "metrics") loadMetrics();
+        if (btn.dataset.tab === "wiki") loadWiki();
+      });
+    });
+
+    document.getElementById("langBtn").addEventListener("click", async () => {
+      lang = lang === "zh" ? "en" : "zh";
+      setLang();
+      loadFaqs();
+      loadWiki();
+      loadFeedback();
+      loadUsers();
+      if (activeTab === "metrics") loadMetrics();
+    });
+
+    document.getElementById("saveFaq").addEventListener("click", async () => {
+      const payload = {
+        question_zh: document.getElementById("qZh").value.trim(),
+        question_en: document.getElementById("qEn").value.trim(),
+        answer_zh: document.getElementById("aZh").value.trim(),
+        answer_en: document.getElementById("aEn").value.trim()
+      };
+      if (!payload.question_zh || !payload.question_en) {
+        alert(lang === "zh" ? "中英文问题都需要填写" : "Both Chinese and English questions are required");
+        return;
+      }
+      try {
+        await getJSON("/api/faqs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        ["qZh","qEn","aZh","aEn"].forEach(id => { document.getElementById(id).value = ""; });
+        await Promise.all([loadFaqs(), loadDashboard()]);
+        alert(t("saveSuccess"));
+      } catch (_) { alert(t("saveFailed")); }
+    });
+
+    // ── Init ───────────────────────────────────────────────────────────────────
+
+    Promise.all([
+      loadDashboard(),
+      loadFaqs(),
+      loadWiki(),
+      loadFeedback(),
+      loadUsers(),
+      loadSettings()
+    ]).then(setLang);
+  </script>
+</body>
+</html>
