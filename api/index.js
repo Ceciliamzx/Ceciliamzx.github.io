@@ -16,11 +16,266 @@ function toSafeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-// Simple keyword relevance scorer
-function scoreMatch(text, query) {
-  const t = (text || '').toLowerCase();
-  const words = query.toLowerCase().split(/[\s，,？?！!。.]+/).filter(w => w.length > 1);
-  return words.filter(w => t.includes(w)).length;
+// ─── Tool Implementations ────────────────────────────────────────────────────
+
+async function toolSearchWiki(query, lang) {
+  const wiki = toSafeArray(await kv.get('wiki'));
+  if (!wiki.length) return '（知识库暂无内容）';
+
+  const q = (query || '').toLowerCase();
+  const words = q.split(/[\s，,？?！!。.]+/).filter(w => w.length > 1);
+
+  const scored = wiki
+    .map(w => {
+      const haystack = [w.title_zh, w.title_en, ...(w.tags || []), w.body_zh, w.body_en]
+        .join(' ').toLowerCase();
+      const score = words.filter(word => haystack.includes(word)).length;
+      return { ...w, score };
+    })
+    .filter(w => w.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+
+  if (!scored.length) return `没有找到与"${query}"相关的知识库文章。`;
+
+  return scored.map(w =>
+    lang === 'zh'
+      ? `## ${w.title_zh}\n${w.body_zh}`
+      : `## ${w.title_en}\n${w.body_en}`
+  ).join('\n\n---\n\n');
+}
+
+async function toolSearchFaq(query, lang) {
+  const faqs = toSafeArray(await kv.get('faqs'));
+  if (!faqs.length) return '（FAQ 暂无内容）';
+
+  const q = (query || '').toLowerCase();
+  const words = q.split(/[\s，,？?！!。.]+/).filter(w => w.length > 1);
+
+  const scored = faqs
+    .map(f => {
+      const haystack = [f.question_zh, f.question_en, f.answer_zh, f.answer_en]
+        .join(' ').toLowerCase();
+      const score = words.filter(word => haystack.includes(word)).length;
+      return { ...f, score };
+    })
+    .filter(f => f.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+
+  if (!scored.length) return `没有找到与"${query}"相关的 FAQ。`;
+
+  return scored.map(f =>
+    lang === 'zh'
+      ? `Q: ${f.question_zh}\nA: ${f.answer_zh}`
+      : `Q: ${f.question_en}\nA: ${f.answer_en}`
+  ).join('\n\n');
+}
+
+async function toolGetContext(lang) {
+  const [faqs, wiki] = await Promise.all([
+    kv.get('faqs').then(toSafeArray),
+    kv.get('wiki').then(toSafeArray)
+  ]);
+
+  const faqTitles = faqs.map(f => lang === 'zh' ? f.question_zh : f.question_en).filter(Boolean);
+  const wikiTitles = wiki.map(w => lang === 'zh' ? w.title_zh : w.title_en).filter(Boolean);
+
+  return JSON.stringify({
+    faq_count: faqs.length,
+    wiki_count: wiki.length,
+    faq_topics: faqTitles.slice(0, 10),
+    wiki_topics: wikiTitles.slice(0, 10)
+  }, null, 2);
+}
+
+// ─── Tool Definitions (OpenAI function-calling format) ────────────────────────
+
+const TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'search_wiki',
+      description: '在知识库中搜索与问题相关的文章。当用户问到具体文化话题时使用此工具获取详细背景知识。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: '搜索关键词，例如"下午茶历史"、"维多利亚排屋"'
+          }
+        },
+        required: ['query']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_faq',
+      description: '在 FAQ 数据库中搜索常见问题的标准答案。当用户的问题可能已有标准解答时使用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: '搜索关键词，例如"炸鱼薯条"、"地铁礼仪"'
+          }
+        },
+        required: ['query']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_knowledge_overview',
+      description: '获取当前知识库的概览，包括已有的 FAQ 主题和 Wiki 文章标题列表。在不确定知识库有哪些内容时使用。',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  }
+];
+
+// ─── Agent Loop ───────────────────────────────────────────────────────────────
+
+async function runAgentLoop(messages, lang, mode, maxSteps = 5) {
+  const isZh = lang === 'zh';
+
+  const formatGuide = isZh
+    ? (mode === 'deep'
+        ? '请用以下四个部分回答，每部分2-4句话：\n【历史背景】\n【社会语境】\n【当代变化】\n【具体案例】'
+        : '请用简洁的一段话回答（100字以内）。')
+    : (mode === 'deep'
+        ? 'Structure your answer with these four sections, 2-4 sentences each:\n[Historical Background]\n[Social Context]\n[Contemporary Change]\n[Concrete Example]'
+        : 'Reply in one concise paragraph (under 100 words).');
+
+  const systemPrompt = isZh
+    ? `你是「读懂伦敦 London Uncovered」的AI文化助手，专门帮助留学生、游客和外来工作者理解伦敦城市文化。
+
+你有以下工具可以使用：
+- search_wiki：搜索知识库文章（详细背景知识）
+- search_faq：搜索常见问题标准答案
+- get_knowledge_overview：查看知识库有哪些内容
+
+工作方式：先判断是否需要查阅知识库，如需要则调用工具获取资料，再基于资料给出回答。
+
+${formatGuide}
+
+回答要准确、有洞察力、贴近实际生活。`
+    : `You are the AI cultural assistant for "London Uncovered", helping students, visitors, and global workers understand London's urban culture.
+
+You have the following tools:
+- search_wiki: Search the knowledge base for detailed background
+- search_faq: Search FAQ for standard answers
+- get_knowledge_overview: View what topics are in the knowledge base
+
+Workflow: Decide if you need to check the knowledge base, call tools if needed, then synthesize an answer.
+
+${formatGuide}
+
+Be insightful and grounded in real life.`;
+
+  const fullMessages = [
+    { role: 'system', content: systemPrompt },
+    ...messages
+  ];
+
+  let toolCallCount = 0;
+  let totalTokensIn = 0;
+  let totalTokensOut = 0;
+  const toolCallLog = [];
+
+  for (let step = 0; step < maxSteps; step++) {
+    const completion = await deepseek.chat.completions.create({
+      model: 'deepseek-chat',
+      max_tokens: mode === 'deep' ? 800 : 300,
+      tools: TOOLS,
+      tool_choice: 'auto',
+      messages: fullMessages
+    });
+
+    totalTokensIn += completion.usage?.prompt_tokens || 0;
+    totalTokensOut += completion.usage?.completion_tokens || 0;
+
+    const choice = completion.choices[0];
+    const assistantMsg = choice.message;
+    fullMessages.push(assistantMsg);
+
+    // Done — LLM gave a final text answer
+    if (choice.finish_reason === 'stop' || !assistantMsg.tool_calls?.length) {
+      return {
+        answer: assistantMsg.content || '',
+        tool_calls: toolCallLog,
+        tokens_in: totalTokensIn,
+        tokens_out: totalTokensOut
+      };
+    }
+
+    // Execute each tool call
+    for (const tc of assistantMsg.tool_calls) {
+      toolCallCount++;
+      const fnName = tc.function.name;
+      let args = {};
+      try { args = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
+
+      let result = '';
+      const t0 = Date.now();
+
+      if (fnName === 'search_wiki') {
+        result = await toolSearchWiki(args.query, lang);
+      } else if (fnName === 'search_faq') {
+        result = await toolSearchFaq(args.query, lang);
+      } else if (fnName === 'get_knowledge_overview') {
+        result = await toolGetContext(lang);
+      } else {
+        result = `未知工具: ${fnName}`;
+      }
+
+      toolCallLog.push({ tool: fnName, args, duration_ms: Date.now() - t0 });
+
+      fullMessages.push({
+        role: 'tool',
+        tool_call_id: tc.id,
+        content: result
+      });
+    }
+  }
+
+  // Fallback if max steps exceeded
+  return {
+    answer: isZh
+      ? '抱歉，这个问题需要更多信息才能回答，请换个方式提问。'
+      : 'Sorry, I need more context to answer this. Please try rephrasing.',
+    tool_calls: toolCallLog,
+    tokens_in: totalTokensIn,
+    tokens_out: totalTokensOut
+  };
+}
+
+// ─── Session Management ───────────────────────────────────────────────────────
+
+const SESSION_MAX_TURNS = 20; // keep last N user+assistant pairs
+const SESSION_TTL = 60 * 60 * 2; // 2 hours
+
+async function getSession(sessionId) {
+  if (!sessionId) return [];
+  try {
+    return toSafeArray(await kv.get(`session:${sessionId}`));
+  } catch (_) {
+    return [];
+  }
+}
+
+async function saveSession(sessionId, messages) {
+  if (!sessionId) return;
+  try {
+    // Keep only the last SESSION_MAX_TURNS turns (user + assistant pairs)
+    const trimmed = messages.slice(-SESSION_MAX_TURNS * 2);
+    await kv.set(`session:${sessionId}`, trimmed, { ex: SESSION_TTL });
+  } catch (_) {}
 }
 
 // ─── Events ──────────────────────────────────────────────────────────────────
@@ -176,7 +431,7 @@ app.delete('/api/wiki/:id', async (req, res) => {
   }
 });
 
-// ─── Chat (Claude) ────────────────────────────────────────────────────────────
+// ─── Chat (Agent) ─────────────────────────────────────────────────────────────
 
 app.post('/api/chat', async (req, res) => {
   if (!process.env.DEEPSEEK_API_KEY) {
@@ -184,131 +439,82 @@ app.post('/api/chat', async (req, res) => {
   }
 
   const t0 = Date.now();
-  const { question, lang = 'zh', mode = 'deep' } = req.body || {};
+  const { question, lang = 'zh', mode = 'deep', sessionId } = req.body || {};
+
   if (!question || !question.trim()) {
     return res.status(400).json({ error: 'question is required' });
   }
 
-  // ── Retrieval phase ──
-  const t1 = Date.now();
-  const [faqs, wiki] = await Promise.all([
-    kv.get('faqs').then(toSafeArray),
-    kv.get('wiki').then(toSafeArray)
-  ]);
-
   const q = question.trim();
 
-  const topFaqs = faqs
-    .map(f => ({
-      ...f,
-      score: scoreMatch(f.question_zh + ' ' + f.question_en, q)
-    }))
-    .filter(f => f.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3);
+  // Load conversation history
+  const history = await getSession(sessionId);
 
-  const topWiki = wiki
-    .map(w => ({
-      ...w,
-      score: scoreMatch(
-        [w.title_zh, w.title_en, ...(w.tags || []), w.body_zh, w.body_en].join(' '),
-        q
-      )
-    }))
-    .filter(w => w.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3);
+  // Append current user message
+  const messages = [
+    ...history,
+    { role: 'user', content: q }
+  ];
 
-  const retrieval_ms = Date.now() - t1;
-
-  // ── Build context ──
-  const isZh = lang === 'zh';
-
-  const faqContext = topFaqs.length
-    ? topFaqs.map(f =>
-        isZh
-          ? `Q: ${f.question_zh}\nA: ${f.answer_zh}`
-          : `Q: ${f.question_en}\nA: ${f.answer_en}`
-      ).join('\n\n')
-    : '';
-
-  const wikiContext = topWiki.length
-    ? topWiki.map(w =>
-        isZh
-          ? `## ${w.title_zh}\n${w.body_zh}`
-          : `## ${w.title_en}\n${w.body_en}`
-      ).join('\n\n')
-    : '';
-
-  const formatGuide = isZh
-    ? (mode === 'deep'
-        ? '请用以下四个部分回答，每部分2-4句话：\n【历史背景】\n【社会语境】\n【当代变化】\n【具体案例】'
-        : '请用简洁的一段话回答（100字以内）。')
-    : (mode === 'deep'
-        ? 'Structure your answer with these four sections, 2-4 sentences each:\n[Historical Background]\n[Social Context]\n[Contemporary Change]\n[Concrete Example]'
-        : 'Reply in one concise paragraph (under 100 words).');
-
-  const contextBlock = [
-    faqContext ? (isZh ? `=== 相关FAQ ===\n${faqContext}` : `=== Relevant FAQs ===\n${faqContext}`) : '',
-    wikiContext ? (isZh ? `=== 知识库 ===\n${wikiContext}` : `=== Knowledge Base ===\n${wikiContext}`) : ''
-  ].filter(Boolean).join('\n\n');
-
-  const systemPrompt = isZh
-    ? `你是「读懂伦敦 London Uncovered」的AI文化助手，专门帮助留学生、游客和外来工作者理解伦敦城市文化。回答要准确、有洞察力、贴近实际生活。
-
-${formatGuide}
-
-${contextBlock ? `参考资料（如相关请优先使用）：\n${contextBlock}` : ''}`
-    : `You are the AI cultural assistant for "London Uncovered", helping students, visitors, and global workers understand London's urban culture. Be insightful and grounded in real life.
-
-${formatGuide}
-
-${contextBlock ? `Reference material (use when relevant):\n${contextBlock}` : ''}`;
-
-  // ── LLM call ──
-  const t2 = Date.now();
-  let completion;
+  // Run agent loop
+  let result;
   try {
-    completion = await deepseek.chat.completions.create({
-      model: 'deepseek-chat',
-      max_tokens: mode === 'deep' ? 800 : 300,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: q }
-      ]
-    });
+    result = await runAgentLoop(messages, lang, mode);
   } catch (err) {
-    return res.status(502).json({ error: 'LLM call failed: ' + err.message });
+    return res.status(502).json({ error: 'Agent loop failed: ' + err.message });
   }
 
-  const llm_ms = Date.now() - t2;
-  const total_ms = Date.now() - t0;
-  const answer = completion.choices[0].message.content;
-  const tokens_in = completion.usage.prompt_tokens;
-  const tokens_out = completion.usage.completion_tokens;
+  // Save updated history (append assistant reply)
+  if (sessionId) {
+    const updatedHistory = [
+      ...history,
+      { role: 'user', content: q },
+      { role: 'assistant', content: result.answer }
+    ];
+    await saveSession(sessionId, updatedHistory);
+  }
 
-  // ── Store metrics ──
+  const total_ms = Date.now() - t0;
+
+  // Store metrics
   try {
     await kv.lpush('metrics', {
       id: Date.now(),
       question: q.slice(0, 200),
       lang,
       mode,
-      retrieval_ms,
-      llm_ms,
+      session_id: sessionId || null,
+      tool_calls: result.tool_calls,
+      tool_call_count: result.tool_calls.length,
       total_ms,
-      tokens_in,
-      tokens_out,
-      faq_hits: topFaqs.length,
-      wiki_hits: topWiki.length,
+      tokens_in: result.tokens_in,
+      tokens_out: result.tokens_out,
       timestamp: new Date().toISOString()
     });
     await kv.ltrim('metrics', 0, 499);
-  } catch (_) {
-    // metrics write failure is non-fatal
-  }
+  } catch (_) {}
 
-  res.json({ answer, metrics: { retrieval_ms, llm_ms, total_ms, tokens_in, tokens_out } });
+  res.json({
+    answer: result.answer,
+    tool_calls: result.tool_calls,
+    metrics: {
+      total_ms,
+      tokens_in: result.tokens_in,
+      tokens_out: result.tokens_out,
+      tool_call_count: result.tool_calls.length
+    }
+  });
+});
+
+// ─── Session Reset ────────────────────────────────────────────────────────────
+
+app.delete('/api/session/:sessionId', async (req, res) => {
+  try {
+    await kv.del(`session:${req.params.sessionId}`);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Metrics ──────────────────────────────────────────────────────────────────
@@ -325,10 +531,9 @@ app.get('/api/metrics', async (req, res) => {
       summary: {
         count: list.length,
         avg_total_ms: avg('total_ms'),
-        avg_retrieval_ms: avg('retrieval_ms'),
-        avg_llm_ms: avg('llm_ms'),
         avg_tokens_in: avg('tokens_in'),
         avg_tokens_out: avg('tokens_out'),
+        avg_tool_calls: avg('tool_call_count'),
         total_tokens: list.reduce((s, m) => s + (m.tokens_in || 0) + (m.tokens_out || 0), 0)
       },
       recent: list.slice(0, 20)

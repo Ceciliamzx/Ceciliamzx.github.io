@@ -440,6 +440,13 @@
     let currentLang = "zh";
     let busy = false;
 
+    // ── Session ──
+    function genSessionId() {
+      return 'sess_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+    let sessionId = sessionStorage.getItem('lu_session') || genSessionId();
+    sessionStorage.setItem('lu_session', sessionId);
+
     const UI_TEXT = {
       zh: {
         brandDesc: "留学生 / 游客 / 外来工作者的城市文化解释助手",
@@ -648,7 +655,12 @@
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question: q, lang: currentLang, mode: answerMode })
+          body: JSON.stringify({
+            question: q,
+            lang: currentLang,
+            mode: answerMode,
+            sessionId
+          })
         });
         if (!res.ok) throw new Error("api_error");
         const data = await res.json();
@@ -656,9 +668,26 @@
 
         content.classList.remove("typing");
         content.textContent = "";
+
+        // Show tool call hint if agent used tools
+        if (data.tool_calls && data.tool_calls.length > 0) {
+          const toolNames = data.tool_calls.map(tc => {
+            if (tc.tool === "search_wiki") return currentLang === "zh" ? "📚 知识库" : "📚 Wiki";
+            if (tc.tool === "search_faq") return currentLang === "zh" ? "❓ FAQ" : "❓ FAQ";
+            if (tc.tool === "get_knowledge_overview") return currentLang === "zh" ? "🗂 概览" : "🗂 Overview";
+            return tc.tool;
+          });
+          const hint = document.createElement("div");
+          hint.style.cssText = "font-size:11px;color:#7a8fa8;margin-bottom:6px;";
+          hint.textContent = (currentLang === "zh" ? "已查阅：" : "Checked: ") + [...new Set(toolNames)].join(" · ");
+          content.appendChild(hint);
+        }
+
+        const textNode = document.createElement("div");
+        content.appendChild(textNode);
         const text = answerMode === "brief" ? toBriefAnswer(data.answer) : data.answer;
         for (const char of text) {
-          content.textContent += char;
+          textNode.textContent += char;
           await wait(char === "\n" ? 18 : 8);
           chatArea.scrollTop = chatArea.scrollHeight;
         }
@@ -699,6 +728,10 @@
 
     clear.addEventListener("click", async () => {
       if (busy) return;
+      // Reset session so conversation history is cleared on backend too
+      fetch(`/api/session/${sessionId}`, { method: "DELETE" }).catch(() => {});
+      sessionId = genSessionId();
+      sessionStorage.setItem('lu_session', sessionId);
       chatArea.innerHTML = "";
       await typeAI(UI_TEXT[currentLang].cleared);
     });
