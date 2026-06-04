@@ -245,6 +245,26 @@
       font-style: italic;
     }
 
+    .feedback-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .fb-btn {
+      background: none;
+      border: 1px solid #c8d2e0;
+      border-radius: 999px;
+      padding: 2px 10px;
+      font-size: 13px;
+      cursor: pointer;
+      color: #7a8fa8;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .fb-btn:hover { background: #e8eef7; border-color: #a0b0c8; }
+    .fb-btn.voted { opacity: 0.45; cursor: default; pointer-events: none; }
+
     @media (max-width: 860px) {
       .layout {
         flex-direction: column;
@@ -446,6 +466,12 @@
     }
     let sessionId = sessionStorage.getItem('lu_session') || genSessionId();
     sessionStorage.setItem('lu_session', sessionId);
+
+    // ── 自我进化：追踪最近一次问答 ──
+    let lastQ = '';
+    let lastA = '';
+    let lastResponseTime = 0; // 回答完成的时间戳
+    let implicitBadSent = false; // 防止重复上报隐式差评
 
     const UI_TEXT = {
       zh: {
@@ -691,6 +717,38 @@
           await wait(char === "\n" ? 18 : 8);
           chatArea.scrollTop = chatArea.scrollHeight;
         }
+
+        // 记录本次问答，用于评分
+        lastA = text;
+        lastResponseTime = Date.now();
+        implicitBadSent = false;
+
+        // 👍 👎 评分按钮
+        const fbRow = document.createElement("div");
+        fbRow.className = "feedback-row";
+        const goodBtn = document.createElement("button");
+        goodBtn.className = "fb-btn";
+        goodBtn.textContent = "👍";
+        const badBtn = document.createElement("button");
+        badBtn.className = "fb-btn";
+        badBtn.textContent = "👎";
+
+        goodBtn.onclick = () => {
+          submitRating("good", 0);
+          goodBtn.classList.add("voted");
+          badBtn.classList.add("voted");
+          goodBtn.textContent = "👍 谢谢反馈";
+        };
+        badBtn.onclick = () => {
+          submitRating("bad", Date.now() - lastResponseTime);
+          goodBtn.classList.add("voted");
+          badBtn.classList.add("voted");
+          badBtn.textContent = "👎 已记录";
+        };
+        fbRow.appendChild(goodBtn);
+        fbRow.appendChild(badBtn);
+        content.appendChild(fbRow);
+
         return true;
       } catch (_) {
         content.remove();
@@ -698,10 +756,29 @@
       }
     }
 
+    function submitRating(rating, dwell_ms) {
+      if (!lastQ || !lastA) return;
+      fetch("/api/rating", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: lastQ, answer: lastA, rating, dwell_ms })
+      }).catch(() => {});
+    }
+
     async function ask(text) {
       const q = (text || "").trim();
       if (!q || busy) return;
 
+      // 隐式差评：上次回答后 20 秒内又追问 → 说明没答好
+      if (lastQ && lastA && !implicitBadSent && lastResponseTime > 0) {
+        const dwell = Date.now() - lastResponseTime;
+        if (dwell < 20000) {
+          submitRating("bad", dwell);
+          implicitBadSent = true;
+        }
+      }
+
+      lastQ = q; // 记录本次问题，等回答完再配对
       busy = true;
       pushUser(q);
       postEvent("chat_send", { question: q });

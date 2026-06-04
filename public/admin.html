@@ -164,6 +164,7 @@
       <button data-tab="feedback" data-i18n="feedback">用户反馈管理</button>
       <button data-tab="users" data-i18n="users">用户管理</button>
       <button data-tab="settings" data-i18n="settings">系统设置</button>
+      <button data-tab="evolution" data-i18n="evolution">🧠 自我进化</button>
     </aside>
 
     <main class="main">
@@ -247,12 +248,33 @@
       <section id="settings" class="panel">
         <pre id="settingsBox"></pre>
       </section>
+
+      <!-- Evolution -->
+      <section id="evolution" class="panel">
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px">
+          <button class="small-btn" id="reflectBtn">🔍 立即分析 Badcase → 生成规则</button>
+          <span id="reflectStatus" style="font-size:13px;color:#64748b"></span>
+        </div>
+
+        <div class="section-label">当前优化规则（自动注入 System Prompt）</div>
+        <div id="rulesList" style="margin-bottom:18px"></div>
+
+        <div class="section-label">近期 Badcase（用户差评 / 隐式追问）</div>
+        <table id="badcaseTable" style="margin-bottom:18px"></table>
+
+        <div class="section-label">近期优质回答（用户好评）</div>
+        <table id="goodTable" style="margin-bottom:18px"></table>
+
+        <div class="section-label">反思日志</div>
+        <table id="reflectionLogTable"></table>
+      </section>
     </main>
   </div>
 
   <script>
     const dict = {
       zh: {
+        evolution: "🧠 自我进化",
         admin: "后台管理",
         dash: "数据分析面板",
         faq: "FAQ 更新",
@@ -274,6 +296,7 @@
         metricsRecentLabel: "近期查询记录（最多20条）"
       },
       en: {
+        evolution: "🧠 Self-Improvement",
         admin: "Admin Panel",
         dash: "Analytics Dashboard",
         faq: "FAQ Management",
@@ -623,6 +646,91 @@
       }
     }
 
+    // ── Evolution ──────────────────────────────────────────────────────────────
+
+    async function loadEvolution() {
+      try {
+        const d = await getJSON("/api/agent-rules");
+
+        // Rules
+        const rulesEl = document.getElementById("rulesList");
+        if (!d.rules.length) {
+          rulesEl.innerHTML = `<p class="empty">暂无规则——积累 5 条差评后自动生成，或点「立即分析」手动触发。</p>`;
+        } else {
+          rulesEl.innerHTML = d.rules.map((r, i) => `
+            <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid #eef0f4">
+              <span style="color:#1a2b48;font-weight:600;min-width:20px">${i + 1}.</span>
+              <span style="flex:1;font-size:13px">${esc(r)}</span>
+              <button class="small-btn" onclick="deleteRule(${i})" style="flex-shrink:0">删除</button>
+            </div>`).join('');
+        }
+
+        // Badcases
+        const badEl = document.getElementById("badcaseTable");
+        badEl.innerHTML = d.badcases.length
+          ? `<tr><th>问题</th><th>停留时长</th><th>时间</th></tr>` +
+            d.badcases.map(b => `<tr>
+              <td style="max-width:300px">${esc((b.question||'').slice(0,80))}</td>
+              <td>${b.dwell_ms ? Math.round(b.dwell_ms/1000) + 's' : '—'}</td>
+              <td style="white-space:nowrap;font-size:12px">${(b.timestamp||'').slice(0,16)}</td>
+            </tr>`).join('')
+          : `<tr><td class="empty">暂无差评记录</td></tr>`;
+
+        // Good examples
+        const goodEl = document.getElementById("goodTable");
+        goodEl.innerHTML = d.examples.length
+          ? `<tr><th>问题</th><th>时间</th></tr>` +
+            d.examples.map(e => `<tr>
+              <td style="max-width:400px">${esc((e.question||'').slice(0,80))}</td>
+              <td style="white-space:nowrap;font-size:12px">${(e.timestamp||'').slice(0,16)}</td>
+            </tr>`).join('')
+          : `<tr><td class="empty">暂无好评记录</td></tr>`;
+
+        // Reflection logs
+        const logEl = document.getElementById("reflectionLogTable");
+        logEl.innerHTML = d.logs.length
+          ? `<tr><th>时间</th><th>分析 Badcase 数</th><th>新增规则</th><th>规则总数</th></tr>` +
+            d.logs.map(l => `<tr>
+              <td style="white-space:nowrap;font-size:12px">${(l.timestamp||'').slice(0,16)}</td>
+              <td>${l.badcases_count||0}</td>
+              <td style="max-width:300px;font-size:12px">${(l.new_rules||[]).map(r=>esc(r)).join('<br>')}</td>
+              <td>${l.total_rules||0}</td>
+            </tr>`).join('')
+          : `<tr><td class="empty" colspan="4">暂无反思记录</td></tr>`;
+
+      } catch (_) {
+        document.getElementById("rulesList").innerHTML = `<p class="empty">加载失败</p>`;
+      }
+    }
+
+    async function deleteRule(idx) {
+      if (!confirm("确认删除该规则？")) return;
+      try {
+        await getJSON(`/api/agent-rules/${idx}`, { method: "DELETE" });
+        await loadEvolution();
+      } catch (_) { alert("删除失败"); }
+    }
+    window.deleteRule = deleteRule;
+
+    document.getElementById("reflectBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("reflectBtn");
+      const status = document.getElementById("reflectStatus");
+      btn.disabled = true;
+      status.textContent = "分析中...";
+      try {
+        const result = await getJSON("/api/reflect", { method: "POST" });
+        if (result.skipped) {
+          status.textContent = `跳过：${result.reason}`;
+        } else {
+          status.textContent = `✓ 新增 ${result.new_rules.length} 条规则，共 ${result.total_rules} 条`;
+          await loadEvolution();
+        }
+      } catch (_) {
+        status.textContent = "分析失败，请重试";
+      }
+      btn.disabled = false;
+    });
+
     // ── Utility ────────────────────────────────────────────────────────────────
 
     function esc(s) {
@@ -640,6 +748,7 @@
         switchTab(btn.dataset.tab);
         if (btn.dataset.tab === "metrics") loadMetrics();
         if (btn.dataset.tab === "wiki") loadWiki();
+        if (btn.dataset.tab === "evolution") loadEvolution();
       });
     });
 

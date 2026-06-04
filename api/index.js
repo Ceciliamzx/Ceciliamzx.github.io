@@ -139,10 +139,98 @@ const TOOLS = [
   }
 ];
 
+// ─── Self-Improvement: Load Learned Context ──────────────────────────────────
+
+async function loadLearnedContext(question, lang) {
+  try {
+    const [rules, examples] = await Promise.all([
+      kv.get('agent_rules').then(toSafeArray),
+      kv.get('good_examples').then(toSafeArray)
+    ]);
+
+    const q = (question || '').toLowerCase();
+    const words = q.split(/[\s，,？?！!。.]+/).filter(w => w.length > 1);
+
+    const relevant = examples
+      .map(ex => ({
+        ...ex,
+        score: words.filter(w => (ex.question || '').toLowerCase().includes(w)).length
+      }))
+      .filter(ex => ex.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 2);
+
+    let context = '';
+    if (rules.length) {
+      context += lang === 'zh'
+        ? `\n\n【从用户反馈中积累的改进规则】\n${rules.map((r, i) => `${i + 1}. ${r}`).join('\n')}`
+        : `\n\n[Learned Improvement Rules from user feedback]\n${rules.map((r, i) => `${i + 1}. ${r}`).join('\n')}`;
+    }
+    if (relevant.length) {
+      context += lang === 'zh'
+        ? `\n\n【高质量回答示例（参考风格）】\n${relevant.map(ex => `Q: ${ex.question}\nA: ${ex.answer}`).join('\n\n')}`
+        : `\n\n[High-quality answer examples]\n${relevant.map(ex => `Q: ${ex.question}\nA: ${ex.answer}`).join('\n\n')}`;
+    }
+    return context;
+  } catch (_) {
+    return '';
+  }
+}
+
+// ─── Self-Improvement: Reflect on Badcases ───────────────────────────────────
+
+async function reflect() {
+  const badcases = toSafeArray(await kv.get('badcases')).slice(-10);
+  if (badcases.length < 3) return { skipped: true, reason: 'not enough badcases (need ≥ 3)' };
+
+  const existingRules = toSafeArray(await kv.get('agent_rules'));
+
+  const prompt = `你是一个AI文化助手的自我优化系统。以下是用户评价为"差"的问答记录：
+
+${badcases.map((b, i) => `【案例${i + 1}】\n问：${b.question}\n答：${b.answer}`).join('\n\n')}
+
+已有优化规则：
+${existingRules.length ? existingRules.map((r, i) => `${i + 1}. ${r}`).join('\n') : '（暂无）'}
+
+请分析这些失败案例暴露的问题，生成3-5条具体可操作的改进规则（不与已有规则重复，聚焦回答质量和伦敦文化准确性）。
+只输出JSON数组格式，例如：["规则1", "规则2", "规则3"]`;
+
+  const completion = await deepseek.chat.completions.create({
+    model: 'deepseek-chat',
+    max_tokens: 400,
+    messages: [{ role: 'user', content: prompt }]
+  });
+
+  const content = completion.choices[0].message.content || '';
+  const match = content.match(/\[[\s\S]*?\]/);
+  if (!match) return { skipped: true, reason: 'parse failed', raw: content };
+
+  let newRules = [];
+  try { newRules = JSON.parse(match[0]); } catch (_) { return { skipped: true, reason: 'json parse failed' }; }
+
+  const allRules = [...existingRules, ...newRules].slice(-20); // 最多保留 20 条
+  await kv.set('agent_rules', allRules);
+
+  await kv.lpush('reflection_log', {
+    timestamp: new Date().toISOString(),
+    badcases_count: badcases.length,
+    new_rules: newRules,
+    total_rules: allRules.length
+  });
+  await kv.ltrim('reflection_log', 0, 49);
+  await kv.set('badcases', []); // 清空已处理的 badcase
+
+  return { success: true, new_rules: newRules, total_rules: allRules.length };
+}
+
 // ─── Agent Loop ───────────────────────────────────────────────────────────────
 
 async function runAgentLoop(messages, lang, mode, maxSteps = 5) {
   const isZh = lang === 'zh';
+
+  // 加载当前问题（最后一条 user 消息）用于匹配相关示例
+  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+  const learnedContext = await loadLearnedContext(lastUserMsg?.content || '', lang);
 
   const formatGuide = isZh
     ? (mode === 'deep'
@@ -164,7 +252,7 @@ async function runAgentLoop(messages, lang, mode, maxSteps = 5) {
 
 ${formatGuide}
 
-回答要准确、有洞察力、贴近实际生活。`
+回答要准确、有洞察力、贴近实际生活。${learnedContext}`
     : `You are the AI cultural assistant for "London Uncovered", helping students, visitors, and global workers understand London's urban culture.
 
 You have the following tools:
@@ -176,7 +264,7 @@ Workflow: Decide if you need to check the knowledge base, call tools if needed, 
 
 ${formatGuide}
 
-Be insightful and grounded in real life.`;
+Be insightful and grounded in real life.${learnedContext}`;
 
   const fullMessages = [
     { role: 'system', content: systemPrompt },
@@ -504,6 +592,75 @@ app.post('/api/chat', async (req, res) => {
       tool_call_count: result.tool_calls.length
     }
   });
+});
+
+// ─── Rating & Self-Improvement ───────────────────────────────────────────────
+
+app.post('/api/rating', async (req, res) => {
+  const { question, answer, rating, dwell_ms } = req.body || {};
+  if (!question || !rating) return res.status(400).json({ error: 'question and rating required' });
+
+  try {
+    if (rating === 'good') {
+      const examples = toSafeArray(await kv.get('good_examples'));
+      examples.unshift({ question, answer, timestamp: new Date().toISOString() });
+      await kv.set('good_examples', examples.slice(0, 50));
+    } else if (rating === 'bad') {
+      const badcases = toSafeArray(await kv.get('badcases'));
+      badcases.unshift({ question, answer, dwell_ms, timestamp: new Date().toISOString() });
+      const updated = badcases.slice(0, 50);
+      await kv.set('badcases', updated);
+      // 积累 5 条 badcase 自动触发反思（异步，不阻塞响应）
+      if (updated.length >= 5) reflect().catch(() => {});
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 手动触发反思（admin 用）
+app.post('/api/reflect', async (req, res) => {
+  try {
+    const result = await reflect();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 查看进化状态（agent rules + examples + badcases + logs）
+app.get('/api/agent-rules', async (req, res) => {
+  try {
+    const [rules, examples, badcases, logs] = await Promise.all([
+      kv.get('agent_rules').then(toSafeArray),
+      kv.get('good_examples').then(toSafeArray),
+      kv.get('badcases').then(toSafeArray),
+      kv.lrange('reflection_log', 0, 9)
+    ]);
+    res.json({
+      rules,
+      examples: examples.slice(0, 10),
+      badcases: badcases.slice(0, 10),
+      logs
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 删除单条规则
+app.delete('/api/agent-rules/:index', async (req, res) => {
+  try {
+    const idx = Number(req.params.index);
+    const rules = toSafeArray(await kv.get('agent_rules'));
+    if (idx < 0 || idx >= rules.length) return res.status(400).json({ error: 'invalid index' });
+    rules.splice(idx, 1);
+    await kv.set('agent_rules', rules);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Session Reset ────────────────────────────────────────────────────────────
