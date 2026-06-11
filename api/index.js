@@ -218,13 +218,10 @@ async function runAgentLoop(messages, lang, mode, maxSteps = 5) {
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
   const learnedContext = await loadLearnedContext(lastUserMsg?.content || '', lang);
 
+  // 始终返回完整 4 段结构，简答/详答只影响前端展示方式
   const formatGuide = isZh
-    ? (mode === 'deep'
-        ? '请用以下四个部分回答，每部分2-4句话：\n【历史背景】\n【社会语境】\n【当代变化】\n【具体案例】'
-        : '请用简洁的一段话回答（100字以内）。')
-    : (mode === 'deep'
-        ? 'Structure your answer with these four sections, 2-4 sentences each:\n[Historical Background]\n[Social Context]\n[Contemporary Change]\n[Concrete Example]'
-        : 'Reply in one concise paragraph (under 100 words).');
+    ? '请用以下四个部分回答，每部分2-4句话：\n【历史背景】\n【社会语境】\n【当代变化】\n【具体案例】'
+    : 'Structure your answer with these four sections, 2-4 sentences each:\n[Historical Background]\n[Social Context]\n[Contemporary Change]\n[Concrete Example]';
 
   const systemPrompt = isZh
     ? `你是「读懂伦敦 London Uncovered」的AI文化助手，专门帮助留学生、游客和外来工作者理解伦敦城市文化。
@@ -263,7 +260,7 @@ Be insightful and grounded in real life.${learnedContext}`;
   for (let step = 0; step < maxSteps; step++) {
     const completion = await deepseek.chat.completions.create({
       model: 'deepseek-chat',
-      max_tokens: mode === 'deep' ? 800 : 300,
+      max_tokens: 800,
       tools: TOOLS,
       tool_choice: 'auto',
       messages: fullMessages
