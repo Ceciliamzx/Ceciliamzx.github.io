@@ -158,7 +158,6 @@
     <aside class="side">
       <h2 id="adminTitle">后台管理</h2>
       <button data-tab="dashboard" data-i18n="dash">数据分析面板</button>
-      <button data-tab="faq" data-i18n="faq">FAQ 更新</button>
       <button data-tab="wiki" data-i18n="wiki">Wiki 知识库</button>
       <button data-tab="metrics" data-i18n="metrics">可观测性监控</button>
       <button data-tab="feedback" data-i18n="feedback">用户反馈管理</button>
@@ -188,25 +187,7 @@
             <div id="kpiClicksLabel">按钮点击</div>
             <h3 id="kpiClicks">0</h3>
           </div>
-          <div class="card">
-            <div id="kpiFaqLabel">FAQ总数</div>
-            <h3 id="kpiFaq">0</h3>
-          </div>
         </div>
-      </section>
-
-      <!-- FAQ -->
-      <section id="faq" class="panel">
-        <div class="row">
-          <input id="qZh" placeholder="问题（中文）" />
-          <input id="qEn" placeholder="Question (EN)" />
-        </div>
-        <div class="row">
-          <textarea id="aZh" rows="5" placeholder="回答（中文）"></textarea>
-          <textarea id="aEn" rows="5" placeholder="Answer (EN)"></textarea>
-        </div>
-        <button class="small-btn" id="saveFaq">保存 FAQ</button>
-        <table id="faqTable" style="margin-top:12px"></table>
       </section>
 
       <!-- Wiki -->
@@ -280,7 +261,6 @@
         evolution: "🧠 自我进化",
         admin: "后台管理",
         dash: "数据分析面板",
-        faq: "FAQ 更新",
         wiki: "Wiki 知识库",
         metrics: "可观测性监控",
         feedback: "用户反馈管理",
@@ -289,7 +269,6 @@
         visits: "访问量",
         questions: "用户提问",
         clicks: "按钮点击",
-        faqCount: "FAQ总数",
         saveSuccess: "保存成功",
         saveFailed: "保存失败",
         deleteText: "删除",
@@ -302,7 +281,6 @@
         evolution: "🧠 Self-Improvement",
         admin: "Admin Panel",
         dash: "Analytics Dashboard",
-        faq: "FAQ Management",
         wiki: "Wiki Knowledge Base",
         metrics: "Observability",
         feedback: "Feedback Management",
@@ -311,7 +289,6 @@
         visits: "Visits",
         questions: "Questions",
         clicks: "Button Clicks",
-        faqCount: "FAQ Count",
         saveSuccess: "Saved successfully",
         saveFailed: "Save failed",
         deleteText: "Delete",
@@ -336,7 +313,6 @@
       document.getElementById("kpiVisitsLabel").textContent = t("visits");
       document.getElementById("kpiQuestionsLabel").textContent = t("questions");
       document.getElementById("kpiClicksLabel").textContent = t("clicks");
-      document.getElementById("kpiFaqLabel").textContent = t("faqCount");
       document.getElementById("wikiFormLabel").textContent = t("wikiFormLabel");
       document.getElementById("metricsRecentLabel").textContent = t("metricsRecentLabel");
       document.getElementById("pageTitle").textContent = t(document.querySelector(`[data-tab="${activeTab}"]`).dataset.i18n);
@@ -360,55 +336,16 @@
 
     async function loadDashboard() {
       try {
-        const [events, faqList] = await Promise.all([
-          getJSON("/api/events"),
-          getJSON("/api/faqs")
-        ]);
+        const events = await getJSON("/api/events");
         document.getElementById("kpiVisits").textContent = events.filter(i => i.type === "page_view").length;
         document.getElementById("kpiQuestions").textContent = events.filter(i => i.type === "chat_send" || i.type === "question").length;
         document.getElementById("kpiClicks").textContent = events.filter(i => ["button_click","tab_switch","lang_switch"].includes(i.type)).length;
-        document.getElementById("kpiFaq").textContent = Array.isArray(faqList) ? faqList.length : 0;
       } catch (_) {
-        ["kpiVisits","kpiQuestions","kpiClicks","kpiFaq"].forEach(id => {
+        ["kpiVisits","kpiQuestions","kpiClicks"].forEach(id => {
           document.getElementById(id).textContent = "0";
         });
       }
     }
-
-    // ── FAQs ───────────────────────────────────────────────────────────────────
-
-    async function loadFaqs() {
-      try {
-        const faqs = await getJSON("/api/faqs");
-        const table = document.getElementById("faqTable");
-        if (!Array.isArray(faqs) || !faqs.length) {
-          table.innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
-          return;
-        }
-        table.innerHTML =
-          `<tr><th>ID</th><th>${lang === "zh" ? "中文" : "Chinese"}</th><th>${lang === "zh" ? "英文" : "English"}</th><th></th></tr>` +
-          faqs.map(f => `
-            <tr>
-              <td>${f.id}</td>
-              <td><strong>Q:</strong> ${esc(f.question_zh)}<br><strong>A:</strong> ${esc(f.answer_zh)}</td>
-              <td><strong>Q:</strong> ${esc(f.question_en)}<br><strong>A:</strong> ${esc(f.answer_en)}</td>
-              <td class="actions-cell">
-                <button class="small-btn" onclick="delFaq(${f.id})">${t("deleteText")}</button>
-              </td>
-            </tr>`).join("");
-      } catch (_) {
-        document.getElementById("faqTable").innerHTML = `<tr><td class="empty">${t("noData")}</td></tr>`;
-      }
-    }
-
-    async function delFaq(id) {
-      if (!confirm(lang === "zh" ? "确认删除？" : "Confirm delete?")) return;
-      try {
-        await getJSON(`/api/faqs/${id}`, { method: "DELETE" });
-        await Promise.all([loadFaqs(), loadDashboard()]);
-      } catch (_) { alert("删除失败"); }
-    }
-    window.delFaq = delFaq;
 
     // ── Wiki ───────────────────────────────────────────────────────────────────
 
@@ -786,41 +723,16 @@
     document.getElementById("langBtn").addEventListener("click", async () => {
       lang = lang === "zh" ? "en" : "zh";
       setLang();
-      loadFaqs();
       loadWiki();
       loadFeedback();
       loadUsers();
       if (activeTab === "metrics") loadMetrics();
     });
 
-    document.getElementById("saveFaq").addEventListener("click", async () => {
-      const payload = {
-        question_zh: document.getElementById("qZh").value.trim(),
-        question_en: document.getElementById("qEn").value.trim(),
-        answer_zh: document.getElementById("aZh").value.trim(),
-        answer_en: document.getElementById("aEn").value.trim()
-      };
-      if (!payload.question_zh || !payload.question_en) {
-        alert(lang === "zh" ? "中英文问题都需要填写" : "Both Chinese and English questions are required");
-        return;
-      }
-      try {
-        await getJSON("/api/faqs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        ["qZh","qEn","aZh","aEn"].forEach(id => { document.getElementById(id).value = ""; });
-        await Promise.all([loadFaqs(), loadDashboard()]);
-        alert(t("saveSuccess"));
-      } catch (_) { alert(t("saveFailed")); }
-    });
-
     // ── Init ───────────────────────────────────────────────────────────────────
 
     Promise.all([
       loadDashboard(),
-      loadFaqs(),
       loadWiki(),
       loadFeedback(),
       loadUsers(),

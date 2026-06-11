@@ -359,28 +359,6 @@
       }).catch(() => {});
     }
 
-    // Load FAQs from backend and merge into KB at startup
-    async function loadApiFaqs() {
-      try {
-        const res = await fetch("/api/faqs");
-        if (!res.ok) return;
-        const faqs = await res.json();
-        if (!Array.isArray(faqs)) return;
-        faqs.forEach(f => {
-          if (!f.question_zh) return;
-          KB.push({
-            q: f.question_zh,
-            k: [f.question_zh, f.question_en].filter(Boolean),
-            a: f.answer_zh || '',
-            a_en: f.answer_en || '',
-            fromApi: true
-          });
-        });
-        const el = document.getElementById("quickTitle");
-        if (el) el.textContent = (currentLang === "zh" ? "快捷提问（" : "Quick Questions (") + KB.length + ")";
-      } catch (_) {}
-    }
-
     const KB = [
       {
         q: "为什么英国有下午茶文化？",
@@ -699,7 +677,6 @@
         if (data.tool_calls && data.tool_calls.length > 0) {
           const toolNames = data.tool_calls.map(tc => {
             if (tc.tool === "search_wiki") return currentLang === "zh" ? "📚 知识库" : "📚 Wiki";
-            if (tc.tool === "search_faq") return currentLang === "zh" ? "❓ FAQ" : "❓ FAQ";
             if (tc.tool === "get_knowledge_overview") return currentLang === "zh" ? "🗂 概览" : "🗂 Overview";
             return tc.tool;
           });
@@ -894,7 +871,6 @@
     window.addEventListener("load", () => {
       postEvent("page_view", { page: "/" });
       postEvent("user_visit", { ua: navigator.userAgent });
-      loadApiFaqs();
       typeAI(UI_TEXT[currentLang].welcome);
     });
   </script>

@@ -79,47 +79,13 @@ async function toolSearchWiki(query, lang, limit = 3) {
   ).join('\n\n---\n\n');
 }
 
-async function toolSearchFaq(query, lang, limit = 3) {
-  const faqs = toSafeArray(await kv.get('faqs'));
-  if (!faqs.length) return '（FAQ 暂无内容）';
-
-  const q = (query || '').toLowerCase();
-  const words = q.split(/[\s，,？?！!。.]+/).filter(w => w.length > 1);
-
-  const scored = faqs
-    .map(f => {
-      const haystack = [f.question_zh, f.question_en, f.answer_zh, f.answer_en]
-        .join(' ').toLowerCase();
-      const score = words.filter(word => haystack.includes(word)).length;
-      return { ...f, score };
-    })
-    .filter(f => f.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
-
-  if (!scored.length) return `没有找到与"${query}"相关的 FAQ。`;
-
-  return scored.map(f =>
-    lang === 'zh'
-      ? `Q: ${f.question_zh}\nA: ${f.answer_zh}`
-      : `Q: ${f.question_en}\nA: ${f.answer_en}`
-  ).join('\n\n');
-}
-
 async function toolGetContext(lang) {
-  const [faqs, wiki] = await Promise.all([
-    kv.get('faqs').then(toSafeArray),
-    kv.get('wiki').then(toSafeArray)
-  ]);
-
-  const faqTitles = faqs.map(f => lang === 'zh' ? f.question_zh : f.question_en).filter(Boolean);
+  const wiki = toSafeArray(await kv.get('wiki'));
   const wikiTitles = wiki.map(w => lang === 'zh' ? w.title_zh : w.title_en).filter(Boolean);
 
   return JSON.stringify({
-    faq_count: faqs.length,
     wiki_count: wiki.length,
-    faq_topics: faqTitles.slice(0, 10),
-    wiki_topics: wikiTitles.slice(0, 10)
+    wiki_topics: wikiTitles.slice(0, 15)
   }, null, 2);
 }
 
@@ -146,25 +112,8 @@ const TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'search_faq',
-      description: '在 FAQ 数据库中搜索常见问题的标准答案。当用户的问题可能已有标准解答时使用。',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: '搜索关键词，例如"炸鱼薯条"、"地铁礼仪"'
-          }
-        },
-        required: ['query']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
       name: 'get_knowledge_overview',
-      description: '获取当前知识库的概览，包括已有的 FAQ 主题和 Wiki 文章标题列表。在不确定知识库有哪些内容时使用。',
+      description: '获取当前 Wiki 知识库的概览，包括文章数量和标题列表。在不确定知识库有哪些内容时使用。',
       parameters: {
         type: 'object',
         properties: {}
@@ -282,7 +231,6 @@ async function runAgentLoop(messages, lang, mode, maxSteps = 5) {
 
 你有以下工具可以使用：
 - search_wiki：搜索知识库文章（详细背景知识）
-- search_faq：搜索常见问题标准答案
 - get_knowledge_overview：查看知识库有哪些内容
 
 工作方式：先判断是否需要查阅知识库，如需要则调用工具获取资料，再基于资料给出回答。
@@ -294,7 +242,6 @@ ${formatGuide}
 
 You have the following tools:
 - search_wiki: Search the knowledge base for detailed background
-- search_faq: Search FAQ for standard answers
 - get_knowledge_overview: View what topics are in the knowledge base
 
 Workflow: Decide if you need to check the knowledge base, call tools if needed, then synthesize an answer.
@@ -351,8 +298,6 @@ Be insightful and grounded in real life.${learnedContext}`;
 
       if (fnName === 'search_wiki') {
         result = await toolSearchWiki(args.query, lang, retrievalLimit);
-      } else if (fnName === 'search_faq') {
-        result = await toolSearchFaq(args.query, lang, retrievalLimit);
       } else if (fnName === 'get_knowledge_overview') {
         result = await toolGetContext(lang);
       } else {
@@ -361,7 +306,7 @@ Be insightful and grounded in real life.${learnedContext}`;
 
       const toolDuration = Date.now() - t0;
       // Monitor Agent：异步更新检索状态，不阻塞主流程
-      if (fnName === 'search_wiki' || fnName === 'search_faq') {
+      if (fnName === 'search_wiki') {
         updateMonitorState(toolDuration).catch(() => {});
       }
       toolCallLog.push({ tool: fnName, args, duration_ms: toolDuration });
@@ -537,49 +482,6 @@ app.get('/api/feedback', async (req, res) => {
   try {
     const feedback = await kv.lrange('feedback', 0, -1);
     res.json(feedback.reverse());
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ─── FAQs ─────────────────────────────────────────────────────────────────────
-
-app.get('/api/faqs', async (req, res) => {
-  try {
-    const faqs = await kv.get('faqs');
-    res.json(toSafeArray(faqs));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/faqs', async (req, res) => {
-  try {
-    const faqs = toSafeArray(await kv.get('faqs'));
-    const newFaq = {
-      id: Date.now(),
-      question_zh: (req.body?.question_zh || '').trim(),
-      question_en: (req.body?.question_en || '').trim(),
-      answer_zh: (req.body?.answer_zh || '').trim(),
-      answer_en: (req.body?.answer_en || '').trim()
-    };
-    if (!newFaq.question_zh || !newFaq.question_en) {
-      return res.status(400).json({ error: 'question_zh and question_en are required' });
-    }
-    faqs.push(newFaq);
-    await kv.set('faqs', faqs);
-    res.json({ success: true, item: newFaq });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/faqs/:id', async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const faqs = toSafeArray(await kv.get('faqs'));
-    await kv.set('faqs', faqs.filter(item => Number(item.id) !== id));
-    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
