@@ -16,9 +16,43 @@ function toSafeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+// ─── Monitor Agent ────────────────────────────────────────────────────────────
+
+async function getRetrievalLimit() {
+  try {
+    const state = await kv.get('monitor_state');
+    return (state && state.retrieval_limit) ? state.retrieval_limit : 3;
+  } catch (_) { return 3; }
+}
+
+async function updateMonitorState(duration_ms) {
+  try {
+    const state = (await kv.get('monitor_state')) || {
+      retrieval_limit: 3, slow_count: 0, fast_streak: 0, total_calls: 0
+    };
+    state.total_calls = (state.total_calls || 0) + 1;
+
+    if (duration_ms > 3000) {
+      state.retrieval_limit = 1;
+      state.slow_count = (state.slow_count || 0) + 1;
+      state.fast_streak = 0;
+      state.last_slow_at = new Date().toISOString();
+      state.last_slow_ms = duration_ms;
+    } else {
+      state.fast_streak = (state.fast_streak || 0) + 1;
+      // 连续 5 次快速 → 逐步恢复上限（1→2→3）
+      if (state.fast_streak >= 5 && state.retrieval_limit < 3) {
+        state.retrieval_limit = Math.min(3, (state.retrieval_limit || 1) + 1);
+        state.fast_streak = 0;
+      }
+    }
+    await kv.set('monitor_state', state);
+  } catch (_) {}
+}
+
 // ─── Tool Implementations ────────────────────────────────────────────────────
 
-async function toolSearchWiki(query, lang) {
+async function toolSearchWiki(query, lang, limit = 3) {
   const wiki = toSafeArray(await kv.get('wiki'));
   if (!wiki.length) return '（知识库暂无内容）';
 
@@ -34,7 +68,7 @@ async function toolSearchWiki(query, lang) {
     })
     .filter(w => w.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 3);
+    .slice(0, limit);
 
   if (!scored.length) return `没有找到与"${query}"相关的知识库文章。`;
 
@@ -45,7 +79,7 @@ async function toolSearchWiki(query, lang) {
   ).join('\n\n---\n\n');
 }
 
-async function toolSearchFaq(query, lang) {
+async function toolSearchFaq(query, lang, limit = 3) {
   const faqs = toSafeArray(await kv.get('faqs'));
   if (!faqs.length) return '（FAQ 暂无内容）';
 
@@ -61,7 +95,7 @@ async function toolSearchFaq(query, lang) {
     })
     .filter(f => f.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 3);
+    .slice(0, limit);
 
   if (!scored.length) return `没有找到与"${query}"相关的 FAQ。`;
 
@@ -228,6 +262,9 @@ ${existingRules.length ? existingRules.map((r, i) => `${i + 1}. ${r}`).join('\n'
 async function runAgentLoop(messages, lang, mode, maxSteps = 5) {
   const isZh = lang === 'zh';
 
+  // Monitor Agent：加载当前检索上限
+  const retrievalLimit = await getRetrievalLimit();
+
   // 加载当前问题（最后一条 user 消息）用于匹配相关示例
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
   const learnedContext = await loadLearnedContext(lastUserMsg?.content || '', lang);
@@ -313,16 +350,21 @@ Be insightful and grounded in real life.${learnedContext}`;
       const t0 = Date.now();
 
       if (fnName === 'search_wiki') {
-        result = await toolSearchWiki(args.query, lang);
+        result = await toolSearchWiki(args.query, lang, retrievalLimit);
       } else if (fnName === 'search_faq') {
-        result = await toolSearchFaq(args.query, lang);
+        result = await toolSearchFaq(args.query, lang, retrievalLimit);
       } else if (fnName === 'get_knowledge_overview') {
         result = await toolGetContext(lang);
       } else {
         result = `未知工具: ${fnName}`;
       }
 
-      toolCallLog.push({ tool: fnName, args, duration_ms: Date.now() - t0 });
+      const toolDuration = Date.now() - t0;
+      // Monitor Agent：异步更新检索状态，不阻塞主流程
+      if (fnName === 'search_wiki' || fnName === 'search_faq') {
+        updateMonitorState(toolDuration).catch(() => {});
+      }
+      toolCallLog.push({ tool: fnName, args, duration_ms: toolDuration });
 
       fullMessages.push({
         role: 'tool',
@@ -341,6 +383,92 @@ Be insightful and grounded in real life.${learnedContext}`;
     tokens_in: totalTokensIn,
     tokens_out: totalTokensOut
   };
+}
+
+// ─── Evaluator Agent ─────────────────────────────────────────────────────────
+
+async function evaluateAnswer(question, answer, lang) {
+  const isZh = lang === 'zh';
+  const prompt = isZh
+    ? `你是一个严格的回答质量评估器。请对以下问答进行评分。
+
+问题：${question}
+回答：${answer}
+
+从以下三个维度各打1-5分：
+- completeness（完整性）：是否覆盖了问题的所有方面
+- relevance（相关性）：是否切题、有无跑题
+- clarity（表达清晰度）：语言是否清晰、结构是否合理
+
+只输出JSON，例如：{"completeness":4,"relevance":5,"clarity":4,"feedback":"改进建议"}`
+    : `You are a strict answer quality evaluator.
+
+Question: ${question}
+Answer: ${answer}
+
+Score each dimension 1-5:
+- completeness: does it cover all aspects of the question?
+- relevance: is it on-topic?
+- clarity: is the language clear and well-structured?
+
+Output JSON only: {"completeness":4,"relevance":5,"clarity":4,"feedback":"suggestions"}`;
+
+  try {
+    const completion = await deepseek.chat.completions.create({
+      model: 'deepseek-chat',
+      max_tokens: 200,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    const content = completion.choices[0].message.content || '';
+    const match = content.match(/\{[\s\S]*?\}/);
+    if (!match) return null;
+    return JSON.parse(match[0]);
+  } catch (_) { return null; }
+}
+
+// Evaluator 包装：不达标则带反馈重试，最多 2 次
+async function runWithEval(messages, lang, mode) {
+  const MAX_RETRIES = 2;
+  const question = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+  let best = null;
+  let bestScore = -1;
+  let currentMessages = messages;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const result = await runAgentLoop(currentMessages, lang, mode);
+    const scores = await evaluateAnswer(question, result.answer, lang);
+
+    const minScore = scores
+      ? Math.min(scores.completeness, scores.relevance, scores.clarity)
+      : 0;
+    const avgScore = scores
+      ? (scores.completeness + scores.relevance + scores.clarity) / 3
+      : 0;
+
+    if (avgScore > bestScore) {
+      bestScore = avgScore;
+      best = { ...result, scores, attempt: attempt + 1 };
+    }
+
+    // 三项均 ≥ 4 → 直接发布
+    if (scores && scores.completeness >= 4 && scores.relevance >= 4 && scores.clarity >= 4) {
+      break;
+    }
+
+    // 还有重试机会 → 带反馈再试
+    if (attempt < MAX_RETRIES && scores?.feedback) {
+      const retryHint = lang === 'zh'
+        ? `你的上一次回答需要改进：${scores.feedback}。请重新回答。`
+        : `Your previous answer needs improvement: ${scores.feedback}. Please try again.`;
+      currentMessages = [
+        ...messages,
+        { role: 'assistant', content: result.answer },
+        { role: 'user', content: retryHint }
+      ];
+    }
+  }
+
+  return best || { answer: lang === 'zh' ? '抱歉，暂时无法生成满意的回答，请重新提问。' : 'Sorry, unable to generate a satisfactory answer. Please rephrase.', tool_calls: [], tokens_in: 0, tokens_out: 0, scores: null, attempt: MAX_RETRIES + 1 };
 }
 
 // ─── Session Management ───────────────────────────────────────────────────────
@@ -544,10 +672,10 @@ app.post('/api/chat', async (req, res) => {
     { role: 'user', content: q }
   ];
 
-  // Run agent loop
+  // Run agent loop with evaluator
   let result;
   try {
-    result = await runAgentLoop(messages, lang, mode);
+    result = await runWithEval(messages, lang, mode);
   } catch (err) {
     return res.status(502).json({ error: 'Agent loop failed: ' + err.message });
   }
@@ -577,6 +705,8 @@ app.post('/api/chat', async (req, res) => {
       total_ms,
       tokens_in: result.tokens_in,
       tokens_out: result.tokens_out,
+      eval_scores: result.scores || null,
+      eval_attempts: result.attempt || 1,
       timestamp: new Date().toISOString()
     });
     await kv.ltrim('metrics', 0, 499);
@@ -695,6 +825,29 @@ app.get('/api/metrics', async (req, res) => {
       },
       recent: list.slice(0, 20)
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Monitor Status ───────────────────────────────────────────────────────────
+
+app.get('/api/monitor', async (req, res) => {
+  try {
+    const state = (await kv.get('monitor_state')) || {
+      retrieval_limit: 3, slow_count: 0, fast_streak: 0, total_calls: 0
+    };
+    res.json(state);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 手动重置 monitor（admin 用）
+app.post('/api/monitor/reset', async (req, res) => {
+  try {
+    await kv.set('monitor_state', { retrieval_limit: 3, slow_count: 0, fast_streak: 0, total_calls: 0 });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

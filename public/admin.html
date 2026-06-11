@@ -259,6 +259,9 @@
         <div class="section-label">当前优化规则（自动注入 System Prompt）</div>
         <div id="rulesList" style="margin-bottom:18px"></div>
 
+        <div class="section-label">Monitor Agent 状态</div>
+        <div id="monitorStatus" style="margin-bottom:18px"></div>
+
         <div class="section-label">近期 Badcase（用户差评 / 隐式追问）</div>
         <table id="badcaseTable" style="margin-bottom:18px"></table>
 
@@ -569,21 +572,27 @@
             <th>${lang === "zh" ? "时间" : "Time"}</th>
             <th>${lang === "zh" ? "问题" : "Question"}</th>
             <th>${lang === "zh" ? "总延迟(ms)" : "Total(ms)"}</th>
-            <th>LLM(ms)</th>
-            <th>${lang === "zh" ? "检索(ms)" : "Retrieval(ms)"}</th>
-            <th>${lang === "zh" ? "Token入/出" : "Tokens in/out"}</th>
-            <th>${lang === "zh" ? "命中" : "Hits"}</th>
+            <th>${lang === "zh" ? "Token入/出" : "Tokens"}</th>
+            <th>${lang === "zh" ? "评分(完/相/清)" : "Scores(C/R/Cl)"}</th>
+            <th>${lang === "zh" ? "尝试次数" : "Attempts"}</th>
           </tr>` +
-          data.recent.map(m => `
-            <tr>
+          data.recent.map(m => {
+            const s = m.eval_scores;
+            const scoreStr = s
+              ? `${s.completeness}/${s.relevance}/${s.clarity}`
+              : "—";
+            const scoreColor = s && s.completeness >= 4 && s.relevance >= 4 && s.clarity >= 4
+              ? "#16a34a" : s ? "#e85d04" : "#64748b";
+            const attempts = m.eval_attempts || 1;
+            return `<tr>
               <td style="white-space:nowrap;font-size:12px">${(m.timestamp || "").slice(11, 19)}</td>
               <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(m.question)}">${esc((m.question || "").slice(0, 50))}</td>
               <td>${m.total_ms || 0}</td>
-              <td>${m.llm_ms || 0}</td>
-              <td>${m.retrieval_ms || 0}</td>
               <td>${m.tokens_in || 0} / ${m.tokens_out || 0}</td>
-              <td>${lang === "zh" ? `FAQ:${m.faq_hits||0} Wiki:${m.wiki_hits||0}` : `FAQ:${m.faq_hits||0} Wiki:${m.wiki_hits||0}`}</td>
-            </tr>`).join("");
+              <td style="color:${scoreColor};font-weight:600">${scoreStr}</td>
+              <td style="color:${attempts > 1 ? '#e85d04' : '#64748b'}">${attempts}</td>
+            </tr>`;
+          }).join("");
       } catch (_) {
         document.getElementById("metricsSummary").innerHTML = `<p class="empty">${t("noData")}</p>`;
         document.getElementById("metricsTable").innerHTML = "";
@@ -650,6 +659,28 @@
 
     async function loadEvolution() {
       try {
+        // Monitor status
+        const monitorEl = document.getElementById("monitorStatus");
+        try {
+          const m = await getJSON("/api/monitor");
+          const limitColor = m.retrieval_limit < 3 ? "#e85d04" : "#16a34a";
+          monitorEl.innerHTML = `
+            <div class="cards" style="grid-template-columns:repeat(4,1fr)">
+              <div class="card"><div>检索上限</div><h3 style="color:${limitColor}">${m.retrieval_limit} 条</h3></div>
+              <div class="card"><div>慢查询次数</div><h3>${m.slow_count||0}</h3></div>
+              <div class="card"><div>当前连续快速</div><h3>${m.fast_streak||0} 次</h3></div>
+              <div class="card"><div>总工具调用</div><h3>${m.total_calls||0}</h3></div>
+            </div>
+            ${m.last_slow_at ? `<p style="font-size:12px;color:#64748b;margin-top:6px">最近慢查询：${m.last_slow_at.slice(0,16)}（${m.last_slow_ms}ms）</p>` : ''}
+            <button class="small-btn" id="resetMonitorBtn" style="margin-top:8px">重置 Monitor</button>`;
+          document.getElementById("resetMonitorBtn")?.addEventListener("click", async () => {
+            await getJSON("/api/monitor/reset", { method: "POST" });
+            await loadEvolution();
+          });
+        } catch (_) {
+          monitorEl.innerHTML = `<p class="empty">Monitor 数据加载失败</p>`;
+        }
+
         const d = await getJSON("/api/agent-rules");
 
         // Rules
