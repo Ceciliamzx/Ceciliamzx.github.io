@@ -1,6 +1,10 @@
 /**
- * 一次性导入脚本：将 Obsidian wiki 批量导入到 London Uncovered 知识库
+ * Obsidian → London Uncovered Wiki 同步脚本
  * 用法：node tools/import-obsidian.js
+ *
+ * 同名标题（title_en）已存在 → PUT 更新
+ * 不存在 → POST 新建
+ * 不会产生重复条目
  */
 
 const fs = require('fs');
@@ -21,7 +25,6 @@ function parseFrontmatter(content) {
     const kv = line.match(/^(\w+):\s*(.+)/);
     if (!kv) continue;
     const [, key, val] = kv;
-    // 处理数组（tags 等）
     meta[key] = val.trim().replace(/^["']|["']$/g, '');
   }
 
@@ -56,37 +59,56 @@ function toTitle(filename, meta) {
     .replace(/\b\w/g, c => c.toUpperCase());
 }
 
-// ── 主流程 ────────────────────────────────────────────────────────────────────
+// ── API 调用 ──────────────────────────────────────────────────────────────────
 
-async function postWiki(item) {
+async function fetchExisting() {
+  const res = await fetch(`${BASE_URL}/api/wiki`);
+  if (!res.ok) throw new Error(`获取现有 wiki 失败: HTTP ${res.status}`);
+  return res.json();
+}
+
+async function createWiki(item) {
   const res = await fetch(`${BASE_URL}/api/wiki`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(item)
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`HTTP ${res.status}: ${text}`);
-  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
-async function main() {
-  const files = [];
+async function updateWiki(id, item) {
+  const res = await fetch(`${BASE_URL}/api/wiki/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(item)
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+  return res.json();
+}
 
+// ── 主流程 ────────────────────────────────────────────────────────────────────
+
+async function main() {
+  // 1. 读取所有 Obsidian 文件
+  const files = [];
   for (const sub of SUBDIRS) {
     const dir = path.join(OBSIDIAN_WIKI, sub);
     if (!fs.existsSync(dir)) { console.warn(`⚠ 目录不存在，跳过: ${dir}`); continue; }
-
     for (const f of fs.readdirSync(dir)) {
-      if (!f.endsWith('.md')) continue;
-      files.push(path.join(dir, f));
+      if (f.endsWith('.md')) files.push(path.join(dir, f));
     }
   }
+  console.log(`\n找到 ${files.length} 个 wiki 文件`);
 
-  console.log(`\n找到 ${files.length} 个 wiki 文件，开始导入...\n`);
+  // 2. 拉取线上现有条目，建立 title_en → id 的映射
+  console.log('正在获取线上现有条目...');
+  const existing = await fetchExisting();
+  const titleMap = {};
+  existing.forEach(w => { titleMap[w.title_en] = w.id; });
+  console.log(`线上现有 ${existing.length} 篇，开始同步...\n`);
 
-  let ok = 0, fail = 0;
+  let created = 0, updated = 0, fail = 0;
 
   for (const filePath of files) {
     const filename = path.basename(filePath);
@@ -94,7 +116,6 @@ async function main() {
     const { meta, body } = parseFrontmatter(raw);
     const cleanedBody = cleanBody(body);
     const title = toTitle(filename, meta);
-
     const tags = Array.isArray(meta.tags) ? meta.tags : [];
 
     const item = {
@@ -106,19 +127,26 @@ async function main() {
     };
 
     try {
-      await postWiki(item);
-      console.log(`  ✓ ${title}`);
-      ok++;
+      if (titleMap[title]) {
+        // 已存在 → 更新
+        await updateWiki(titleMap[title], item);
+        console.log(`  ↺ 更新  ${title}`);
+        updated++;
+      } else {
+        // 不存在 → 新建
+        await createWiki(item);
+        console.log(`  ✓ 新增  ${title}`);
+        created++;
+      }
     } catch (err) {
-      console.error(`  ✗ ${title} — ${err.message}`);
+      console.error(`  ✗ 失败  ${title} — ${err.message}`);
       fail++;
     }
 
-    // 避免频率限制
     await new Promise(r => setTimeout(r, 300));
   }
 
-  console.log(`\n完成：${ok} 成功，${fail} 失败`);
+  console.log(`\n完成：新增 ${created} 篇，更新 ${updated} 篇，失败 ${fail} 篇`);
 }
 
 main().catch(err => { console.error(err); process.exit(1); });
